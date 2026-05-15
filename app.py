@@ -68,6 +68,18 @@ def is_parent(r):
     return len(parts) == 2
 
 # ===== 所有未結案總覽區段（週報 ③ 下方用）=====
+def get_wait_reference_value(r):
+    return r.get('dispatchDate') or r.get('date') or ''
+
+def get_wait_days(r):
+    ref = get_wait_reference_value(r)
+    if not ref:
+        return 0
+    try:
+        return (datetime.now() - datetime.fromisoformat(ref)).days
+    except:
+        return 0
+
 def write_all_open_section(ws, start_row, all_records):
     """在指定 row 寫入所有未結案總覽，回傳結束後的 row"""
     # 排除「待客戶寄回」和已結案
@@ -120,7 +132,7 @@ def write_all_open_section(ws, start_row, all_records):
         row += 1
 
         # 欄標題
-        set_hdr(ws, row, ['編號', '公司名稱', '車牌', '問題次分類', '負責人員', '進線日期', '已等待'])
+        set_hdr(ws, row, ['編號', '公司名稱', '車牌', '問題次分類', '負責人員', '派工日期', '已等待'])
         ws.column_dimensions['A'].width = 20
         ws.column_dimensions['B'].width = 14
         ws.column_dimensions['C'].width = 10
@@ -131,12 +143,12 @@ def write_all_open_section(ws, start_row, all_records):
         row += 1
 
         # 父單
-        for r in sorted(grp['parents'], key=lambda x: x.get('date', '')):
+        for r in sorted(grp['parents'], key=lambda x: get_wait_reference_value(x)):
             _write_open_row(ws, row, r, is_child=False)
             row += 1
 
         # 子單
-        for r in sorted(grp['children'], key=lambda x: x.get('date', '')):
+        for r in sorted(grp['children'], key=lambda x: get_wait_reference_value(x)):
             _write_open_row(ws, row, r, is_child=True)
             row += 1
 
@@ -177,6 +189,36 @@ def _write_open_row(ws, row, r, is_child=False):
         c.border = border()
     ws.row_dimensions[row].height = 16
 
+
+def _write_open_row(ws, row, r, is_child=False):
+    wait_days = get_wait_days(r)
+    wait_str = f'{wait_days}天'
+    wait_color = 'F87171' if wait_days > 14 else ('FB923C' if wait_days > 7 else 'E2E8F0')
+    bg = '1A1D27' if is_child else '161925'
+    id_prefix = '  ↳ ' if is_child else ''
+
+    wait_reference = get_wait_reference_value(r)
+    wait_date = wait_reference[:10] if wait_reference else ''
+
+    vals = [
+        id_prefix + r.get('id', ''),
+        r.get('company', ''),
+        r.get('plate', ''),
+        r.get('subcategory', ''),
+        r.get('handler', '—'),
+        wait_date,
+        wait_str
+    ]
+    colors = ['A78BFA' if is_child else 'E2E8F0', 'FFFFFF', '94A3B8', '94A3B8', 'E2E8F0', '94A3B8', wait_color]
+    bolds = [True, False, False, False, False, False, True]
+
+    for c2, (val, color, bold) in enumerate(zip(vals, colors, bolds), 1):
+        c = ws.cell(row=row, column=c2, value=val)
+        c.font = Font(name='Arial', bold=bold, color=color, size=10)
+        c.fill = fill(bg)
+        c.alignment = ca('left') if c2 <= 4 else ca()
+        c.border = border()
+    ws.row_dimensions[row].height = 16
 
 # ===== WEEKLY REPORT =====
 def generate_weekly(records, from_date, to_date, all_records=None):
