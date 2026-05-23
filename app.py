@@ -52,32 +52,29 @@ def fmt_dt(value):
         return ''
     return str(value).replace('T', ' ')[:16]
 
-def build_status_focus(rows, per_handler_limit=3):
+def build_status_focus(rows):
     grouped = {}
     for r in rows:
-        handler = r.get('handler') or '未指派'
-        grouped.setdefault(handler, []).append(r)
+        company = r.get('company') or '未填公司'
+        grouped.setdefault(company, []).append(r)
 
     lines = []
-    for handler in sorted(grouped.keys()):
-        handler_rows = sorted(
-            grouped[handler],
-            key=lambda item: (item.get('status') == '結案', item.get('date') or '')
-        )
-        items = []
-        for r in handler_rows[:per_handler_limit]:
-            company = r.get('company') or '未填公司'
+    status = rows[0].get('status') if rows else ''
+    for company in sorted(grouped.keys()):
+        company_rows = sorted(grouped[company], key=lambda item: item.get('date') or '')
+        problem_counts = {}
+        for r in company_rows:
             subcategory = r.get('subcategory') or '未填問題'
-            case_date = fmt_dt(r.get('date'))
-            result = r.get('result') or ''
-            status_note = '' if r.get('status') == '結案' else '（未結）'
-            result_note = f' → {result}' if result else ''
-            date_note = f'{case_date} ' if case_date else ''
-            items.append(f'{date_note}{company}-{subcategory}{status_note}{result_note}')
+            problem_counts[subcategory] = problem_counts.get(subcategory, 0) + 1
 
-        extra_count = len(handler_rows) - len(items)
-        extra_note = f'，另 {extra_count} 筆' if extra_count > 0 else ''
-        lines.append(f'{handler}：' + '；'.join(items) + extra_note)
+        problems = []
+        for problem, count in problem_counts.items():
+            problems.append(f'{problem}（{count}筆）' if count > 1 else problem)
+
+        company_label = company
+        if status != '結案':
+            company_label = f'{company}（{len(company_rows)}筆）'
+        lines.append(f'{company_label}：' + '、'.join(problems))
     return '\n'.join(lines)
 
 def is_dispatch_overdue(r):
