@@ -52,6 +52,34 @@ def fmt_dt(value):
         return ''
     return str(value).replace('T', ' ')[:16]
 
+def build_status_focus(rows, per_handler_limit=3):
+    grouped = {}
+    for r in rows:
+        handler = r.get('handler') or '未指派'
+        grouped.setdefault(handler, []).append(r)
+
+    lines = []
+    for handler in sorted(grouped.keys()):
+        handler_rows = sorted(
+            grouped[handler],
+            key=lambda item: (item.get('status') == '結案', item.get('date') or '')
+        )
+        items = []
+        for r in handler_rows[:per_handler_limit]:
+            company = r.get('company') or '未填公司'
+            subcategory = r.get('subcategory') or '未填問題'
+            case_date = fmt_dt(r.get('date'))
+            result = r.get('result') or ''
+            status_note = '' if r.get('status') == '結案' else '（未結）'
+            result_note = f' → {result}' if result else ''
+            date_note = f'{case_date} ' if case_date else ''
+            items.append(f'{date_note}{company}-{subcategory}{status_note}{result_note}')
+
+        extra_count = len(handler_rows) - len(items)
+        extra_note = f'，另 {extra_count} 筆' if extra_count > 0 else ''
+        lines.append(f'{handler}：' + '；'.join(items) + extra_note)
+    return '\n'.join(lines)
+
 def is_dispatch_overdue(r):
     if r.get('status') == '結案': return False
     if not r.get('date'): return False
@@ -377,13 +405,13 @@ def generate_weekly(records, from_date, to_date, all_records=None):
         resolved = [r for r in rows if r.get('status') == '結案']
         priority = (unresolved + resolved)[:3]
         incoming_times = '\n'.join(fmt_dt(r.get('date')) for r in priority)
-        notes = '\n'.join(f"・[{r.get('company','')}] {r.get('subcategory','')}" + (f" → {r['result']}" if r.get('result') else '') + ('' if r.get('status')=='結案' else ' ⚠未結') for r in priority)
+        notes = build_status_focus(rows)
         bg = '1E2235' if row%2==0 else '161925'
         for c2, val in enumerate([st, len(rows), handlers, incoming_times, notes], 1):
             c = ws3.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=(c2==1), color=STATUS_COLORS.get(st,'E2E8F0') if c2==1 else 'E2E8F0', size=10)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
-        ws3.row_dimensions[row].height = max(45, len(priority)*20); row += 1
+        ws3.row_dimensions[row].height = max(45, len(notes.split('\n'))*22); row += 1
 
     # 圓餅圖
     chart_row = row + 1
@@ -676,13 +704,13 @@ def generate_monthly(records, from_date, to_date):
         resolved = [r for r in rows if r.get('status') == '結案']
         priority = (unresolved+resolved)[:3]
         incoming_times = '\n'.join(fmt_dt(r.get('date')) for r in priority)
-        notes = '\n'.join(f"・[{r.get('company','')}] {r.get('subcategory','')}"+(f" → {r['result']}" if r.get('result') else '')+('' if r.get('status')=='結案' else ' ⚠未結') for r in priority)
+        notes = build_status_focus(rows)
         bg = '1E2235' if row%2==0 else '161925'
         for c2, val in enumerate([st,len(rows),handlers,incoming_times,notes],1):
             c = ws6.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=(c2==1), color=STATUS_COLORS.get(st,'E2E8F0') if c2==1 else 'E2E8F0', size=10)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
-        ws6.row_dimensions[row].height = max(45, len(priority)*20); row += 1
+        ws6.row_dimensions[row].height = max(45, len(notes.split('\n'))*22); row += 1
     chart_row = row+1
     ws6.cell(row=chart_row, column=1, value='狀態'); ws6.cell(row=chart_row, column=2, value='件數')
     for i,(st,rows) in enumerate(sorted(status_groups.items(), key=lambda x:-len(x[1])),1):
