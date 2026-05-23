@@ -47,11 +47,16 @@ def calc_dur(s, e):
         return f'{h}小時{m}分' if h else f'{m}分鐘'
     except: return ''
 
+def fmt_dt(value):
+    if not value:
+        return ''
+    return str(value).replace('T', ' ')[:16]
+
 def is_dispatch_overdue(r):
     if r.get('status') == '結案': return False
-    if not r.get('dispatchDate'): return False
+    if not r.get('date'): return False
     if r.get('handler') == '客戶': return False
-    try: return (datetime.now() - datetime.fromisoformat(r['dispatchDate'])).days > 7
+    try: return (datetime.now() - datetime.fromisoformat(r['date'])).days > 7
     except: return False
 
 def map_product(p):
@@ -69,7 +74,7 @@ def is_parent(r):
 
 # ===== 所有未結案總覽區段（週報 ③ 下方用）=====
 def get_wait_reference_value(r):
-    return r.get('dispatchDate') or r.get('date') or ''
+    return r.get('date') or ''
 
 def get_wait_days(r):
     ref = get_wait_reference_value(r)
@@ -132,7 +137,7 @@ def write_all_open_section(ws, start_row, all_records):
         row += 1
 
         # 欄標題
-        set_hdr(ws, row, ['編號', '公司名稱', '車牌', '問題次分類', '負責人員', '派工日期', '已等待'])
+        set_hdr(ws, row, ['編號', '公司名稱', '車牌', '問題次分類', '負責人員', '進線日期時間', '已等待'])
         ws.column_dimensions['A'].width = 20
         ws.column_dimensions['B'].width = 14
         ws.column_dimensions['C'].width = 10
@@ -198,7 +203,7 @@ def _write_open_row(ws, row, r, is_child=False):
     id_prefix = '  ↳ ' if is_child else ''
 
     wait_reference = get_wait_reference_value(r)
-    wait_date = wait_reference[:10] if wait_reference else ''
+    wait_date = fmt_dt(wait_reference)
 
     vals = [
         id_prefix + r.get('id', ''),
@@ -262,7 +267,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     ws0.row_dimensions[3].height = 22
     ws0.row_dimensions[4].height = 12
 
-    kpis = [('進線總件數',total,'5B8CFF','件'),('已結案',closed,'34D399',f'結案率 {close_rate}'),('未結案',open_cnt,'FBBF24','件'),('派工逾7天未結案',len(od),'F87171','件')]
+    kpis = [('進線總件數',total,'5B8CFF','件'),('已結案',closed,'34D399',f'結案率 {close_rate}'),('未結案',open_cnt,'FBBF24','件'),('逾7天未結案',len(od),'F87171','件')]
     for i, (lbl, val, color, sub) in enumerate(kpis):
         col = 2 + i
         c = ws0.cell(row=5, column=col, value=lbl)
@@ -357,9 +362,9 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     ws3 = wb.create_sheet('③ 處理狀態總覽')
     ws3.sheet_view.showGridLines = False
     title_row(ws3, 1, f'📋 處理狀態總覽　｜　{label}', 7)
-    set_hdr(ws3, 2, ['處理狀態','件數','處理人員','重點說明（未結案優先）'])
+    set_hdr(ws3, 2, ['處理狀態','件數','處理人員','進線日期時間','重點說明（未結案優先）'])
     ws3.column_dimensions['A'].width = 14; ws3.column_dimensions['B'].width = 8
-    ws3.column_dimensions['C'].width = 22; ws3.column_dimensions['D'].width = 60
+    ws3.column_dimensions['C'].width = 22; ws3.column_dimensions['D'].width = 18; ws3.column_dimensions['E'].width = 60
 
     status_groups = {}
     for r in records:
@@ -371,9 +376,10 @@ def generate_weekly(records, from_date, to_date, all_records=None):
         unresolved = [r for r in rows if r.get('status') != '結案']
         resolved = [r for r in rows if r.get('status') == '結案']
         priority = (unresolved + resolved)[:3]
+        incoming_times = '\n'.join(fmt_dt(r.get('date')) for r in priority)
         notes = '\n'.join(f"・[{r.get('company','')}] {r.get('subcategory','')}" + (f" → {r['result']}" if r.get('result') else '') + ('' if r.get('status')=='結案' else ' ⚠未結') for r in priority)
         bg = '1E2235' if row%2==0 else '161925'
-        for c2, val in enumerate([st, len(rows), handlers, notes], 1):
+        for c2, val in enumerate([st, len(rows), handlers, incoming_times, notes], 1):
             c = ws3.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=(c2==1), color=STATUS_COLORS.get(st,'E2E8F0') if c2==1 else 'E2E8F0', size=10)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
@@ -397,22 +403,22 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     # ===== ④ 逾7天未結案 =====
     ws4 = wb.create_sheet('④ 逾7天未結案')
     ws4.sheet_view.showGridLines = False
-    max_days = max([(datetime.now()-datetime.fromisoformat(r['dispatchDate'])).days for r in od], default=0) if od else 0
+    max_days = max([(datetime.now()-datetime.fromisoformat(r['date'])).days for r in od if r.get('date')], default=0) if od else 0
     ws4.merge_cells('A1:H1')
-    sc = ws4.cell(row=1, column=1, value=f'⚠️  截至報告日共 {len(od)} 筆派工超過7天未結案　｜　最長已逾 {max_days} 天　｜　報告日期：{to_date}')
+    sc = ws4.cell(row=1, column=1, value=f'⚠️  截至報告日共 {len(od)} 筆超過7天未結案　｜　最長已逾 {max_days} 天　｜　報告日期：{to_date}')
     sc.font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
     sc.fill = fill('7F1D1D'); sc.alignment = ca('left')
     ws4.row_dimensions[1].height = 22
-    set_hdr(ws4, 2, ['編號','進線日期','派工日期','公司名稱','問題次分類','處理狀態','負責人員','派工已逾天數'])
+    set_hdr(ws4, 2, ['編號','進線日期時間','車牌','公司名稱','問題次分類','處理狀態','負責人員','已逾天數'])
     for col, w in [('A',18),('B',16),('C',16),('D',14),('E',26),('F',14),('G',12),('H',14)]:
         ws4.column_dimensions[col].width = w
     row = 3
-    for r in sorted(od, key=lambda x: x.get('dispatchDate','')):
-        try: days = (datetime.now()-datetime.fromisoformat(r['dispatchDate'])).days
+    for r in sorted(od, key=lambda x: x.get('date','')):
+        try: days = (datetime.now()-datetime.fromisoformat(r['date'])).days
         except: days = 0
         day_color = 'F87171' if days>14 else 'FB923C'
         bg = '2A1515' if row%2==0 else '221212'
-        vals = [r.get('id',''),r.get('date','')[:10] if r.get('date') else '',r.get('dispatchDate','')[:10] if r.get('dispatchDate') else '',r.get('company',''),r.get('subcategory',''),r.get('status',''),r.get('handler','—'),f'{days}天']
+        vals = [r.get('id',''),fmt_dt(r.get('date')),r.get('plate',''),r.get('company',''),r.get('subcategory',''),r.get('status',''),r.get('handler','—'),f'{days}天']
         colors = ['E2E8F0','94A3B8','94A3B8','FFFFFF','94A3B8',STATUS_COLORS.get(r.get('status',''),'E2E8F0'),'E2E8F0',day_color]
         for c2,(val,color) in enumerate(zip(vals,colors),1):
             c = ws4.cell(row=row, column=c2, value=val)
@@ -421,7 +427,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
         ws4.row_dimensions[row].height = 16; row += 1
     if not od:
         ws4.merge_cells('A3:H3')
-        c = ws4.cell(row=3, column=1, value='✅ 本週無派工超過7天未結案')
+        c = ws4.cell(row=3, column=1, value='✅ 本週無超過7天未結案')
         c.font = Font(name='Arial', bold=True, color='34D399', size=12); c.alignment = ca()
 
     return wb
@@ -474,7 +480,7 @@ def generate_monthly(records, from_date, to_date):
         c.font = Font(name='Arial', color='64748B', size=9); c.fill = fill('22263A'); c.alignment = ca()
         ws0.row_dimensions[8].height = 14
     ws0.row_dimensions[9].height = 12
-    kpis2 = [('結案率',close_rate,'A78BFA'),('平均處理時間',avg_str,'38BDF8'),('最長逾期天數',f'{max((datetime.now()-datetime.fromisoformat(r["dispatchDate"])).days for r in od) if od else 0}天','FB923C')]
+    kpis2 = [('結案率',close_rate,'A78BFA'),('平均處理時間',avg_str,'38BDF8'),('最長逾期天數',f'{max((datetime.now()-datetime.fromisoformat(r["date"])).days for r in od if r.get("date")) if od else 0}天','FB923C')]
     for i,(lbl,val,color) in enumerate(kpis2):
         col = 2+i
         c = ws0.cell(row=10, column=col, value=lbl)
@@ -597,21 +603,21 @@ def generate_monthly(records, from_date, to_date):
     # ===== ④ 逾7天未結案 =====
     ws4 = wb.create_sheet('④ 逾7天未結案')
     ws4.sheet_view.showGridLines = False
-    max_days = max([(datetime.now()-datetime.fromisoformat(r['dispatchDate'])).days for r in od if r.get('dispatchDate')], default=0)
+    max_days = max([(datetime.now()-datetime.fromisoformat(r['date'])).days for r in od if r.get('date')], default=0)
     ws4.merge_cells('A1:H1')
-    sc = ws4.cell(row=1, column=1, value=f'⚠️  截至月底共 {len(od)} 筆派工超過7天未結案　｜　最長已逾 {max_days} 天　｜　{label}')
+    sc = ws4.cell(row=1, column=1, value=f'⚠️  截至月底共 {len(od)} 筆超過7天未結案　｜　最長已逾 {max_days} 天　｜　{label}')
     sc.font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
     sc.fill = fill('7F1D1D'); sc.alignment = ca('left'); ws4.row_dimensions[1].height = 22
-    set_hdr(ws4, 2, ['編號','進線日期','派工日期','公司名稱','問題次分類','處理狀態','負責人員','派工已逾天數'])
+    set_hdr(ws4, 2, ['編號','進線日期時間','車牌','公司名稱','問題次分類','處理狀態','負責人員','已逾天數'])
     for col, w in [('A',18),('B',16),('C',16),('D',14),('E',26),('F',14),('G',12),('H',14)]:
         ws4.column_dimensions[col].width = w
     row = 3
-    for r in sorted(od, key=lambda x: x.get('dispatchDate','')):
-        try: days = (datetime.now()-datetime.fromisoformat(r['dispatchDate'])).days
+    for r in sorted(od, key=lambda x: x.get('date','')):
+        try: days = (datetime.now()-datetime.fromisoformat(r['date'])).days
         except: days = 0
         day_color = 'F87171' if days>14 else 'FB923C'
         bg = '2A1515' if row%2==0 else '221212'
-        vals = [r.get('id',''),r.get('date','')[:10] if r.get('date') else '',r.get('dispatchDate','')[:10] if r.get('dispatchDate') else '',r.get('company',''),r.get('subcategory',''),r.get('status',''),r.get('handler','—'),f'{days}天']
+        vals = [r.get('id',''),fmt_dt(r.get('date')),r.get('plate',''),r.get('company',''),r.get('subcategory',''),r.get('status',''),r.get('handler','—'),f'{days}天']
         colors = ['E2E8F0','94A3B8','94A3B8','FFFFFF','94A3B8',STATUS_COLORS.get(r.get('status',''),'E2E8F0'),'E2E8F0',day_color]
         for c2,(val,color) in enumerate(zip(vals,colors),1):
             c = ws4.cell(row=row, column=c2, value=val)
@@ -655,10 +661,10 @@ def generate_monthly(records, from_date, to_date):
     # ===== ⑥ 處理狀態 =====
     ws6 = wb.create_sheet('⑥ 處理狀態總覽')
     ws6.sheet_view.showGridLines = False
-    title_row(ws6, 1, f'📋 處理狀態總覽　｜　{label}', 4)
-    set_hdr(ws6, 2, ['處理狀態','件數','處理人員','重點說明'])
+    title_row(ws6, 1, f'📋 處理狀態總覽　｜　{label}', 5)
+    set_hdr(ws6, 2, ['處理狀態','件數','處理人員','進線日期時間','重點說明'])
     ws6.column_dimensions['A'].width = 14; ws6.column_dimensions['B'].width = 8
-    ws6.column_dimensions['C'].width = 22; ws6.column_dimensions['D'].width = 60
+    ws6.column_dimensions['C'].width = 22; ws6.column_dimensions['D'].width = 18; ws6.column_dimensions['E'].width = 60
     status_groups = {}
     for r in records:
         k = r.get('status') or '未知'
@@ -669,9 +675,10 @@ def generate_monthly(records, from_date, to_date):
         unresolved = [r for r in rows if r.get('status') != '結案']
         resolved = [r for r in rows if r.get('status') == '結案']
         priority = (unresolved+resolved)[:3]
+        incoming_times = '\n'.join(fmt_dt(r.get('date')) for r in priority)
         notes = '\n'.join(f"・[{r.get('company','')}] {r.get('subcategory','')}"+(f" → {r['result']}" if r.get('result') else '')+('' if r.get('status')=='結案' else ' ⚠未結') for r in priority)
         bg = '1E2235' if row%2==0 else '161925'
-        for c2, val in enumerate([st,len(rows),handlers,notes],1):
+        for c2, val in enumerate([st,len(rows),handlers,incoming_times,notes],1):
             c = ws6.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=(c2==1), color=STATUS_COLORS.get(st,'E2E8F0') if c2==1 else 'E2E8F0', size=10)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
@@ -684,7 +691,7 @@ def generate_monthly(records, from_date, to_date):
     lb3 = Reference(ws6, min_col=1, min_row=chart_row+1, max_row=chart_row+len(status_groups))
     d3 = Reference(ws6, min_col=2, min_row=chart_row, max_row=chart_row+len(status_groups))
     pie3.add_data(d3, titles_from_data=True); pie3.set_categories(lb3)
-    ws6.add_chart(pie3, 'F2')
+    ws6.add_chart(pie3, 'G2')
 
     return wb
 
