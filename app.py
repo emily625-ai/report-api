@@ -77,6 +77,14 @@ def build_status_focus(rows):
         lines.append(f'{company_label}：' + '、'.join(problems))
     return '\n'.join(lines)
 
+def build_incoming_time_summary(rows):
+    dates = sorted(fmt_dt(r.get('date')) for r in rows if r.get('date'))
+    if not dates:
+        return ''
+    if len(dates) == 1:
+        return f'進線：{dates[0]}\n共 1 筆'
+    return f'最早：{dates[0]}\n最新：{dates[-1]}\n共 {len(rows)} 筆'
+
 def is_dispatch_overdue(r):
     if r.get('status') == '結案': return False
     if not r.get('date'): return False
@@ -398,10 +406,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     row = 3
     for st, rows in sorted(status_groups.items(), key=lambda x: -len(x[1])):
         handlers = '、'.join(set(r['handler'] for r in rows if r.get('handler')))
-        unresolved = [r for r in rows if r.get('status') != '結案']
-        resolved = [r for r in rows if r.get('status') == '結案']
-        priority = (unresolved + resolved)[:3]
-        incoming_times = '\n'.join(fmt_dt(r.get('date')) for r in priority)
+        incoming_times = build_incoming_time_summary(rows)
         notes = build_status_focus(rows)
         bg = '1E2235' if row%2==0 else '161925'
         for c2, val in enumerate([st, len(rows), handlers, incoming_times, notes], 1):
@@ -697,10 +702,7 @@ def generate_monthly(records, from_date, to_date):
     row = 3
     for st, rows in sorted(status_groups.items(), key=lambda x:-len(x[1])):
         handlers = '、'.join(set(r['handler'] for r in rows if r.get('handler')))
-        unresolved = [r for r in rows if r.get('status') != '結案']
-        resolved = [r for r in rows if r.get('status') == '結案']
-        priority = (unresolved+resolved)[:3]
-        incoming_times = '\n'.join(fmt_dt(r.get('date')) for r in priority)
+        incoming_times = build_incoming_time_summary(rows)
         notes = build_status_focus(rows)
         bg = '1E2235' if row%2==0 else '161925'
         for c2, val in enumerate([st,len(rows),handlers,incoming_times,notes],1):
