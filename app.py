@@ -660,27 +660,27 @@ def generate_monthly(records, from_date, to_date):
     ws4 = wb.create_sheet('④ 逾7天未結案')
     ws4.sheet_view.showGridLines = False
     max_days = max([get_elapsed_days_as_of(r, report_end) for r in od if r.get('date')], default=0)
-    ws4.merge_cells('A1:H1')
+    ws4.merge_cells('A1:G1')
     sc = ws4.cell(row=1, column=1, value=f'⚠️  截至月底共 {len(od)} 筆超過7天未結案　｜　最長已逾 {max_days} 天　｜　{label}')
     sc.font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
     sc.fill = fill('7F1D1D'); sc.alignment = ca('left'); ws4.row_dimensions[1].height = 22
-    set_hdr(ws4, 2, ['編號','進線日期時間','車牌','公司名稱','問題次分類','處理狀態','負責人員','已逾天數'])
-    for col, w in [('A',18),('B',16),('C',16),('D',14),('E',26),('F',14),('G',12),('H',14)]:
+    set_hdr(ws4, 2, ['進線日期時間','車牌','公司名稱','問題次分類','處理狀態','負責人員','已逾天數'])
+    for col, w in [('A',16),('B',16),('C',14),('D',26),('E',14),('F',12),('G',14)]:
         ws4.column_dimensions[col].width = w
     row = 3
     for r in sorted(od, key=lambda x: x.get('date','')):
         days = get_elapsed_days_as_of(r, report_end)
         day_color = 'F87171' if days>14 else 'FB923C'
         bg = '2A1515' if row%2==0 else '221212'
-        vals = [r.get('id',''),fmt_dt(r.get('date')),r.get('plate',''),r.get('company',''),r.get('subcategory',''),r.get('status',''),r.get('handler','—'),f'{days}天']
-        colors = ['E2E8F0','94A3B8','94A3B8','FFFFFF','94A3B8',STATUS_COLORS.get(r.get('status',''),'E2E8F0'),'E2E8F0',day_color]
+        vals = [fmt_dt(r.get('date')),r.get('plate',''),r.get('company',''),r.get('subcategory',''),r.get('status',''),r.get('handler','—'),f'{days}天']
+        colors = ['94A3B8','94A3B8','FFFFFF','94A3B8',STATUS_COLORS.get(r.get('status',''),'E2E8F0'),'E2E8F0',day_color]
         for c2,(val,color) in enumerate(zip(vals,colors),1):
             c = ws4.cell(row=row, column=c2, value=val)
-            c.font = Font(name='Arial', bold=(c2==8), color=color, size=10)
+            c.font = Font(name='Arial', bold=(c2==7), color=color, size=10)
             c.fill = fill(bg); c.alignment = ca(); c.border = border()
         ws4.row_dimensions[row].height = 16; row += 1
     if not od:
-        ws4.merge_cells('A3:H3')
+        ws4.merge_cells('A3:G3')
         c = ws4.cell(row=3, column=1, value='✅ 本月無逾期未結案')
         c.font = Font(name='Arial', bold=True, color='34D399', size=12); c.alignment = ca()
 
@@ -716,10 +716,10 @@ def generate_monthly(records, from_date, to_date):
     # ===== ⑥ 處理狀態 =====
     ws6 = wb.create_sheet('⑥ 處理狀態總覽')
     ws6.sheet_view.showGridLines = False
-    title_row(ws6, 1, f'📋 處理狀態總覽　｜　{label}', 5)
-    set_hdr(ws6, 2, ['處理狀態','件數','處理人員','進線日期時間','重點說明'])
+    title_row(ws6, 1, f'📋 處理狀態總覽　｜　{label}', 4)
+    set_hdr(ws6, 2, ['處理狀態','件數','處理人員','重點說明'])
     ws6.column_dimensions['A'].width = 14; ws6.column_dimensions['B'].width = 8
-    ws6.column_dimensions['C'].width = 22; ws6.column_dimensions['D'].width = 18; ws6.column_dimensions['E'].width = 60
+    ws6.column_dimensions['C'].width = 22; ws6.column_dimensions['D'].width = 78
     status_groups = {}
     for r in records:
         k = r.get('status') or '未知'
@@ -727,10 +727,9 @@ def generate_monthly(records, from_date, to_date):
     row = 3
     for st, rows in sorted(status_groups.items(), key=lambda x:-len(x[1])):
         handlers = '、'.join(set(r['handler'] for r in rows if r.get('handler')))
-        incoming_times = build_incoming_time_summary(rows)
         notes = build_status_focus(rows)
         bg = '1E2235' if row%2==0 else '161925'
-        for c2, val in enumerate([st,len(rows),handlers,incoming_times,notes],1):
+        for c2, val in enumerate([st,len(rows),handlers,notes],1):
             c = ws6.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=(c2==1), color=STATUS_COLORS.get(st,'E2E8F0') if c2==1 else 'E2E8F0', size=10)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
