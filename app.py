@@ -4,9 +4,14 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import PieChart, BarChart, LineChart, Reference
-from datetime import datetime
+from datetime import datetime, timezone
+import base64
+import hashlib
+import hmac
 import io
+import json
 import os
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -746,10 +751,205 @@ def generate_monthly(records, from_date, to_date):
 
     return wb
 
+# ===== LINE OA webhook helpers =====
+LINE_WEBHOOK_SOURCE = 'line_webhook'
+LINE_MESSAGES_SCHEMA = os.environ.get('LINE_MESSAGES_SCHEMA', 'staging')
+LINE_MESSAGES_TABLE = os.environ.get('LINE_MESSAGES_TABLE', 'line_messages')
+
+def get_required_env(name):
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f'Missing required environment variable: {name}')
+    return value
+
+def normalize_line_message(text):
+    return ' '.join((text or '').strip().split())
+
+def verify_line_signature(raw_body, signature):
+    if not signature:
+        return False
+    channel_secret = get_required_env('LINE_CHANNEL_SECRET')
+    digest = hmac.new(channel_secret.encode('utf-8'), raw_body, hashlib.sha256).digest()
+    expected = base64.b64encode(digest).decode('utf-8')
+    return hmac.compare_digest(expected, signature)
+
+def line_timestamp_to_iso(timestamp_ms):
+    if timestamp_ms is None:
+        return None
+    try:
+        timestamp_seconds = int(timestamp_ms) / 1000
+        return datetime.fromtimestamp(timestamp_seconds, tz=timezone.utc).isoformat()
+    except Exception:
+        return None
+
+def build_line_duplicate_hash(sender_id, sender_name, received_at, normalized_message, message_id=''):
+    key_parts = [
+        LINE_WEBHOOK_SOURCE,
+        sender_id or sender_name or '',
+        received_at or '',
+        normalized_message or '',
+        message_id or ''
+    ]
+    key = '|'.join(key_parts)
+    return hashlib.sha256(key.encode('utf-8')).hexdigest() if normalized_message or message_id else None
+
+def get_supabase_headers(schema=None):
+    service_key = get_required_env('SUPABASE_SERVICE_ROLE_KEY')
+    headers = {
+        'apikey': service_key,
+        'Authorization': f'Bearer {service_key}',
+        'Content-Type': 'application/json'
+    }
+    if schema:
+        headers['Accept-Profile'] = schema
+        headers['Content-Profile'] = schema
+    return headers
+
+def supabase_rest_url(table, query=''):
+    base_url = get_required_env('SUPABASE_URL').rstrip('/')
+    if base_url.endswith('/rest/v1'):
+        suffix = f'?{query}' if query else ''
+        return f'{base_url}/{table}{suffix}'
+    suffix = f'?{query}' if query else ''
+    return f'{base_url}/rest/v1/{table}{suffix}'
+
+def supabase_request(method, table, *, schema=None, query='', payload=None):
+    response = requests.request(
+        method,
+        supabase_rest_url(table, query),
+        headers=get_supabase_headers(schema),
+        data=json.dumps(payload) if payload is not None else None,
+        timeout=15
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(f'Supabase {method} {table} failed: {response.status_code} {response.text[:500]}')
+    if not response.text:
+        return None
+    return response.json()
+
+def line_message_exists(duplicate_hash):
+    if not duplicate_hash:
+        return False
+    query = f'duplicate_hash=eq.{duplicate_hash}&select=id&limit=1'
+    rows = supabase_request('GET', LINE_MESSAGES_TABLE, schema=LINE_MESSAGES_SCHEMA, query=query)
+    return bool(rows)
+
+def insert_line_message(row):
+    return supabase_request(
+        'POST',
+        LINE_MESSAGES_TABLE,
+        schema=LINE_MESSAGES_SCHEMA,
+        query='select=id',
+        payload=row
+    )
+
+def log_line_activity(action, detail):
+    try:
+        payload = {
+            'case_id': None,
+            'action': action,
+            'changed_by': 'LINE Webhook',
+            'changed_at': datetime.now(timezone.utc).isoformat(),
+            'detail': detail
+        }
+        supabase_request('POST', 'activity_log', schema='public', payload=payload)
+    except Exception as exc:
+        app.logger.warning('LINE activity_log write failed: %s', exc)
+
+def build_line_message_row(event):
+    source = event.get('source') or {}
+    message = event.get('message') or {}
+    message_type = message.get('type')
+    sender_id = source.get('userId') or source.get('groupId') or source.get('roomId')
+    sender_name = source.get('type') or 'line'
+    received_at = line_timestamp_to_iso(event.get('timestamp'))
+
+    if message_type == 'text':
+        raw_message = message.get('text') or ''
+        status = 'pending' if raw_message.strip() else 'error'
+    else:
+        raw_message = json.dumps({
+            'event_type': event.get('type'),
+            'message_type': message_type,
+            'message_id': message.get('id')
+        }, ensure_ascii=False, separators=(',', ':'))
+        status = 'error'
+
+    normalized_message = normalize_line_message(raw_message)
+    duplicate_hash = build_line_duplicate_hash(
+        sender_id,
+        sender_name,
+        received_at,
+        normalized_message,
+        message.get('id') or event.get('webhookEventId') or ''
+    )
+
+    return {
+        'source': LINE_WEBHOOK_SOURCE,
+        'sender_name': sender_name,
+        'sender_id': sender_id,
+        'raw_message': raw_message,
+        'normalized_message': normalized_message or None,
+        'received_at': received_at,
+        'status': status,
+        'operator_id': 'line_webhook',
+        'duplicate_hash': duplicate_hash
+    }
+
+def process_line_webhook_events(events):
+    summary = {'received': len(events), 'inserted': 0, 'duplicates': 0, 'errors': 0}
+    for event in events:
+        if event.get('type') != 'message':
+            continue
+        try:
+            row = build_line_message_row(event)
+            duplicate_hash = row.get('duplicate_hash')
+            if duplicate_hash and line_message_exists(duplicate_hash):
+                summary['duplicates'] += 1
+                log_line_activity('line_webhook_duplicate_skipped', f'duplicate_hash={duplicate_hash}')
+                continue
+            insert_line_message(row)
+            summary['inserted'] += 1
+            log_line_activity('line_webhook_message_imported', f'status={row["status"]}; source={LINE_WEBHOOK_SOURCE}')
+        except Exception as exc:
+            summary['errors'] += 1
+            app.logger.exception('LINE webhook event processing failed')
+            log_line_activity('line_webhook_event_failed', str(exc)[:300])
+            raise
+    return summary
+
 # ===== API ROUTES =====
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok', 'time': datetime.now().isoformat()})
+
+@app.route('/api/line/webhook', methods=['POST'])
+def line_webhook():
+    raw_body = request.get_data()
+    signature = request.headers.get('x-line-signature', '')
+    try:
+        if not verify_line_signature(raw_body, signature):
+            return jsonify({'error': 'invalid LINE signature'}), 403
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 500
+
+    try:
+        payload = json.loads(raw_body.decode('utf-8') or '{}')
+    except Exception:
+        return jsonify({'error': 'invalid JSON payload'}), 400
+
+    events = payload.get('events', [])
+    if not isinstance(events, list):
+        return jsonify({'error': 'invalid LINE events payload'}), 400
+
+    try:
+        summary = process_line_webhook_events(events)
+        return jsonify({'status': 'ok', **summary})
+    except RuntimeError as exc:
+        return jsonify({'error': str(exc)}), 500
+    except Exception as exc:
+        app.logger.exception('LINE webhook request failed')
+        return jsonify({'error': str(exc)}), 500
 
 @app.route('/weekly-report', methods=['POST'])
 def weekly_report():
