@@ -756,6 +756,7 @@ def generate_monthly(records, from_date, to_date):
 LINE_WEBHOOK_SOURCE = 'line_webhook'
 LINE_MESSAGES_SCHEMA = (os.environ.get('LINE_MESSAGES_SCHEMA') or 'staging').strip()
 LINE_MESSAGES_TABLE = (os.environ.get('LINE_MESSAGES_TABLE') or 'line_messages').strip()
+LINE_API_BASE_URL = 'https://api.line.me/v2/bot'
 
 def get_required_env(name):
     value = (os.environ.get(name) or '').strip()
@@ -782,6 +783,43 @@ def line_timestamp_to_iso(timestamp_ms):
         return datetime.fromtimestamp(timestamp_seconds, tz=timezone.utc).isoformat()
     except Exception:
         return None
+
+def line_api_get(path):
+    access_token = (os.environ.get('LINE_CHANNEL_ACCESS_TOKEN') or '').strip()
+    if not access_token:
+        return None
+    response = requests.get(
+        f'{LINE_API_BASE_URL}{path}',
+        headers={'Authorization': f'Bearer {access_token}'},
+        timeout=10
+    )
+    if response.status_code >= 400:
+        app.logger.warning('LINE API GET %s failed: %s %s', path, response.status_code, response.text[:300])
+        return None
+    return response.json()
+
+def resolve_line_sender_name(source):
+    source_type = source.get('type') or 'line'
+    user_id = source.get('userId')
+    group_id = source.get('groupId')
+    room_id = source.get('roomId')
+
+    if source_type == 'group' and group_id:
+        summary = line_api_get(f'/group/{group_id}/summary')
+        if summary and summary.get('groupName'):
+            return summary['groupName']
+        return 'LINE 群組'
+
+    if source_type == 'user' and user_id:
+        profile = line_api_get(f'/profile/{user_id}')
+        if profile and profile.get('displayName'):
+            return profile['displayName']
+        return 'LINE 用戶'
+
+    if source_type == 'room' and room_id:
+        return 'LINE 多人聊天室'
+
+    return source_type or 'line'
 
 def build_line_duplicate_hash(sender_id, sender_name, received_at, normalized_message, message_id=''):
     key_parts = [
@@ -862,7 +900,7 @@ def build_line_message_row(event):
     message = event.get('message') or {}
     message_type = message.get('type')
     sender_id = source.get('userId') or source.get('groupId') or source.get('roomId')
-    sender_name = source.get('type') or 'line'
+    sender_name = resolve_line_sender_name(source)
     received_at = line_timestamp_to_iso(event.get('timestamp'))
 
     if message_type == 'text':
