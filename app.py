@@ -969,6 +969,33 @@ def line_config_check():
     except RuntimeError as exc:
         return jsonify({'status': 'error', 'error': str(exc)}), 500
 
+@app.route('/api/line/supabase-check', methods=['GET'])
+def line_supabase_check():
+    try:
+        rows = supabase_request(
+            'GET',
+            LINE_MESSAGES_TABLE,
+            schema=LINE_MESSAGES_SCHEMA,
+            query='select=id&limit=1'
+        )
+        return jsonify({
+            'status': 'ok',
+            'line_messages_schema': LINE_MESSAGES_SCHEMA,
+            'line_messages_table': LINE_MESSAGES_TABLE,
+            'row_count_sample': len(rows or [])
+        })
+    except Exception as exc:
+        supabase_url = (os.environ.get('SUPABASE_URL') or '').strip()
+        parsed = urlparse(supabase_url)
+        return jsonify({
+            'status': 'error',
+            'supabase_host': parsed.netloc,
+            'line_messages_schema': LINE_MESSAGES_SCHEMA,
+            'line_messages_table': LINE_MESSAGES_TABLE,
+            'error_type': type(exc).__name__,
+            'error': str(exc)[:500]
+        }), 500
+
 @app.route('/weekly-report', methods=['POST'])
 def weekly_report():
     try:
