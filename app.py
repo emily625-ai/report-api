@@ -12,6 +12,7 @@ import io
 import json
 import os
 import requests
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 CORS(app)
@@ -753,11 +754,11 @@ def generate_monthly(records, from_date, to_date):
 
 # ===== LINE OA webhook helpers =====
 LINE_WEBHOOK_SOURCE = 'line_webhook'
-LINE_MESSAGES_SCHEMA = os.environ.get('LINE_MESSAGES_SCHEMA', 'staging')
-LINE_MESSAGES_TABLE = os.environ.get('LINE_MESSAGES_TABLE', 'line_messages')
+LINE_MESSAGES_SCHEMA = (os.environ.get('LINE_MESSAGES_SCHEMA') or 'staging').strip()
+LINE_MESSAGES_TABLE = (os.environ.get('LINE_MESSAGES_TABLE') or 'line_messages').strip()
 
 def get_required_env(name):
-    value = os.environ.get(name)
+    value = (os.environ.get(name) or '').strip()
     if not value:
         raise RuntimeError(f'Missing required environment variable: {name}')
     return value
@@ -950,6 +951,23 @@ def line_webhook():
     except Exception as exc:
         app.logger.exception('LINE webhook request failed')
         return jsonify({'error': str(exc)}), 500
+
+@app.route('/api/line/config-check', methods=['GET'])
+def line_config_check():
+    try:
+        supabase_url = get_required_env('SUPABASE_URL')
+        parsed = urlparse(supabase_url)
+        return jsonify({
+            'status': 'ok',
+            'supabase_scheme': parsed.scheme,
+            'supabase_host': parsed.netloc,
+            'line_messages_schema': LINE_MESSAGES_SCHEMA,
+            'line_messages_table': LINE_MESSAGES_TABLE,
+            'has_line_channel_secret': bool((os.environ.get('LINE_CHANNEL_SECRET') or '').strip()),
+            'has_supabase_service_role_key': bool((os.environ.get('SUPABASE_SERVICE_ROLE_KEY') or '').strip())
+        })
+    except RuntimeError as exc:
+        return jsonify({'status': 'error', 'error': str(exc)}), 500
 
 @app.route('/weekly-report', methods=['POST'])
 def weekly_report():
