@@ -935,10 +935,23 @@ def build_line_message_row(event):
         'duplicate_hash': duplicate_hash
     }
 
+def summarize_line_event_for_log(event):
+    message = event.get('message') or {}
+    source = event.get('source') or {}
+    parts = [
+        f'event_type={event.get("type") or "-"}',
+        f'message_type={message.get("type") or "-"}',
+        f'source_type={source.get("type") or "-"}',
+        f'webhook_event_id={event.get("webhookEventId") or "-"}'
+    ]
+    return '; '.join(parts)
+
 def process_line_webhook_events(events):
-    summary = {'received': len(events), 'inserted': 0, 'duplicates': 0, 'errors': 0}
+    summary = {'received': len(events), 'inserted': 0, 'duplicates': 0, 'skipped': 0, 'errors': 0}
     for event in events:
         if event.get('type') != 'message':
+            summary['skipped'] += 1
+            log_line_activity('line_webhook_event_skipped', summarize_line_event_for_log(event))
             continue
         try:
             row = build_line_message_row(event)
