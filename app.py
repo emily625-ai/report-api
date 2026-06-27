@@ -4,7 +4,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import PieChart, BarChart, LineChart, Reference
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import base64
 import hashlib
 import hmac
@@ -98,6 +98,55 @@ def is_dispatch_overdue(r):
     try: return (datetime.now() - datetime.fromisoformat(r['date'])).days > 7
     except: return False
 
+def parse_report_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value)[:10]).date()
+    except:
+        return None
+
+def get_record_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value)).date()
+    except:
+        try:
+            return datetime.fromisoformat(str(value)[:10]).date()
+        except:
+            return None
+
+def build_previous_period_records(all_records, from_date, to_date):
+    start = parse_report_date(from_date)
+    end = parse_report_date(to_date)
+    if not start or not end or end < start:
+        return []
+    days = (end - start).days + 1
+    prev_end = start - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=days - 1)
+    rows = []
+    for r in all_records:
+        record_date = get_record_date(r.get('date'))
+        if record_date and prev_start <= record_date <= prev_end:
+            rows.append(r)
+    return rows
+
+def build_category_counts(records):
+    counts = {}
+    for r in records:
+        category = r.get('category') or '其他'
+        counts[category] = counts.get(category, 0) + 1
+    return counts
+
+def format_weekly_category_delta(current_count, previous_count):
+    diff = current_count - previous_count
+    if diff > 0:
+        return f'↑{diff}件（上週 {previous_count}件）'
+    if diff < 0:
+        return f'↓{abs(diff)}件（上週 {previous_count}件）'
+    return f'持平（上週 {previous_count}件）'
+
 def get_report_end_datetime(to_date):
     if not to_date:
         return datetime.now()
@@ -136,7 +185,7 @@ def is_parent(r):
     parts = r.get('id', '').split('-')
     return len(parts) == 2
 
-# ===== 所有未結案總覽區段（週報 ③ 下方用）=====
+# ===== 超過7天未結案追蹤區段（週報 ③ 下方用）=====
 def get_wait_reference_value(r):
     return r.get('date') or ''
 
@@ -150,81 +199,38 @@ def get_wait_days(r):
         return 0
 
 def write_all_open_section(ws, start_row, all_records):
-    """在指定 row 寫入所有未結案總覽，回傳結束後的 row"""
-    # 排除「待客戶寄回」和已結案
-    open_cases = [r for r in all_records
-                  if r.get('status') != '結案'
-                  and r.get('status') != '待客戶寄回']
+    """在指定 row 寫入截至今日超過 7 天未結案追蹤，回傳結束後的 row。"""
+    overdue_cases = [r for r in all_records if is_dispatch_overdue(r)]
 
-    if not open_cases:
-        ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row, end_column=7)
-        c = ws.cell(row=start_row, column=1, value='✅ 目前無未結案案件')
-        c.font = Font(name='Arial', bold=True, color='34D399', size=11)
-        c.alignment = ca()
-        return start_row + 1
-
-    # 空白間隔行
     ws.row_dimensions[start_row].height = 10
     row = start_row + 1
 
-    # 大標題
-    title_row(ws, row, f'📌 所有未結案案件總覽（全期間，共 {len(open_cases)} 筆，排除待客戶寄回）', 7, bg='2D3250')
+    if not overdue_cases:
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=8)
+        c = ws.cell(row=row, column=1, value='✅ 目前無超過7天未結案案件')
+        c.font = Font(name='Arial', bold=True, color='34D399', size=11)
+        c.alignment = ca()
+        return row + 1
+
+    title_row(ws, row, f'📌 超過7天未結案追蹤（截至今日，全期間共 {len(overdue_cases)} 筆）', 8, bg='2D3250')
     row += 1
 
-    # 狀態分組，父單在前、子單在後
-    STATUS_ORDER = ['客服處理中', '待派工', '轉派技師', '轉派工程師', '其他']
-    groups = {}
-    for r in open_cases:
-        st = r.get('status') or '其他'
-        groups.setdefault(st, {'parents': [], 'children': []})
-        if is_parent(r):
-            groups[st]['parents'].append(r)
-        else:
-            groups[st]['children'].append(r)
+    set_hdr(ws, row, ['已等待', '進線日期', '公司名稱', '車牌', '問題次分類', '處理狀態', '負責人員', '備註說明'])
+    for col, w in [('A',10),('B',14),('C',16),('D',16),('E',26),('F',14),('G',12),('H',32)]:
+        ws.column_dimensions[col].width = w
+    row += 1
 
-    # 排序狀態（依 STATUS_ORDER，其他的排最後）
-    def status_sort_key(st):
-        return STATUS_ORDER.index(st) if st in STATUS_ORDER else len(STATUS_ORDER)
-
-    for st in sorted(groups.keys(), key=status_sort_key):
-        grp = groups[st]
-        all_in_group = grp['parents'] + grp['children']
-        color = STATUS_COLORS.get(st, 'E2E8F0')
-
-        # 狀態小標題列
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=7)
-        c = ws.cell(row=row, column=1, value=f'▌ {st}　（{len(all_in_group)} 筆）')
-        c.font = Font(name='Arial', bold=True, color=color, size=11)
-        c.fill = fill('1E2235')
-        c.alignment = ca('left')
-        ws.row_dimensions[row].height = 20
+    for r in sorted(overdue_cases, key=lambda x: get_wait_days(x), reverse=True):
+        _write_open_row(ws, row, r, is_child=not is_parent(r))
         row += 1
 
-        # 欄標題
-        set_hdr(ws, row, ['編號', '公司名稱', '車牌', '問題次分類', '負責人員', '進線日期時間', '已等待'])
-        ws.column_dimensions['A'].width = 20
-        ws.column_dimensions['B'].width = 14
-        ws.column_dimensions['C'].width = 10
-        ws.column_dimensions['D'].width = 26
-        ws.column_dimensions['E'].width = 12
-        ws.column_dimensions['F'].width = 14
-        ws.column_dimensions['G'].width = 10
-        row += 1
-
-        # 父單
-        for r in sorted(grp['parents'], key=lambda x: get_wait_reference_value(x)):
-            _write_open_row(ws, row, r, is_child=False)
-            row += 1
-
-        # 子單
-        for r in sorted(grp['children'], key=lambda x: get_wait_reference_value(x)):
-            _write_open_row(ws, row, r, is_child=True)
-            row += 1
-
-        ws.row_dimensions[row].height = 6
-        row += 1  # 各組之間空一行
-
-    return row
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+    c = ws.cell(row=row, column=1, value='🔴  逾7天（高風險）')
+    c.font = Font(name='Arial', bold=True, color='F87171', size=10)
+    c.fill = fill('1E2235')
+    c.alignment = ca('left')
+    ws.row_dimensions[row].height = 18
+    return row + 1
 
 def _write_open_row(ws, row, r, is_child=False):
     """寫入一筆未結案記錄"""
@@ -262,32 +268,32 @@ def _write_open_row(ws, row, r, is_child=False):
 def _write_open_row(ws, row, r, is_child=False):
     wait_days = get_wait_days(r)
     wait_str = f'{wait_days}天'
-    wait_color = 'F87171' if wait_days > 14 else ('FB923C' if wait_days > 7 else 'E2E8F0')
+    wait_color = 'F87171' if wait_days >= 7 else ('FB923C' if wait_days >= 3 else 'E2E8F0')
     bg = '1A1D27' if is_child else '161925'
-    id_prefix = '  ↳ ' if is_child else ''
 
     wait_reference = get_wait_reference_value(r)
-    wait_date = fmt_dt(wait_reference)
+    wait_date = fmt_dt(wait_reference)[:10]
 
     vals = [
-        id_prefix + r.get('id', ''),
+        wait_str,
+        wait_date,
         r.get('company', ''),
         r.get('plate', ''),
         r.get('subcategory', ''),
+        r.get('status', ''),
         r.get('handler', '—'),
-        wait_date,
-        wait_str
+        r.get('result') or r.get('description') or ''
     ]
-    colors = ['A78BFA' if is_child else 'E2E8F0', 'FFFFFF', '94A3B8', '94A3B8', 'E2E8F0', '94A3B8', wait_color]
-    bolds = [True, False, False, False, False, False, True]
+    colors = [wait_color, '94A3B8', 'FFFFFF', '94A3B8', '94A3B8', STATUS_COLORS.get(r.get('status',''),'E2E8F0'), 'E2E8F0', '94A3B8']
+    bolds = [True, False, False, False, False, True, False, False]
 
     for c2, (val, color, bold) in enumerate(zip(vals, colors, bolds), 1):
         c = ws.cell(row=row, column=c2, value=val)
         c.font = Font(name='Arial', bold=bold, color=color, size=10)
         c.fill = fill(bg)
-        c.alignment = ca('left') if c2 <= 4 else ca()
+        c.alignment = ca('left', wrap=True) if c2 in (3, 5, 8) else ca()
         c.border = border()
-    ws.row_dimensions[row].height = 16
+    ws.row_dimensions[row].height = 20
 
 # ===== WEEKLY REPORT =====
 def generate_weekly(records, from_date, to_date, all_records=None):
@@ -298,7 +304,9 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     closed = sum(1 for r in records if r.get('status') == '結案')
     open_cnt = total - closed
     close_rate = f'{closed/total*100:.1f}%' if total else '0%'
-    od = [r for r in records if is_dispatch_overdue(r)]
+    od = [r for r in all_records if is_dispatch_overdue(r)]
+    previous_records = build_previous_period_records(all_records, from_date, to_date)
+    previous_category_counts = build_category_counts(previous_records)
     durs = []
     for r in records:
         if r.get('status') == '結案' and r.get('date') and r.get('closeDate'):
@@ -395,9 +403,10 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     # ===== ② 問題分類 =====
     ws2 = wb.create_sheet('② 問題分類統計')
     ws2.sheet_view.showGridLines = False
-    title_row(ws2, 1, f'🏷️ 問題分類統計　｜　{label}', 3)
-    set_hdr(ws2, 2, ['問題大類','總件數','主要次分類（件數）'])
-    ws2.column_dimensions['A'].width = 14; ws2.column_dimensions['B'].width = 10; ws2.column_dimensions['C'].width = 50
+    title_row(ws2, 1, f'🏷️ 問題分類統計　｜　{label}', 4)
+    set_hdr(ws2, 2, ['問題大類','總件數','主要次分類','與上週差異'])
+    ws2.column_dimensions['A'].width = 14; ws2.column_dimensions['B'].width = 10
+    ws2.column_dimensions['C'].width = 50; ws2.column_dimensions['D'].width = 22
 
     cat_map = {}
     for r in records:
@@ -410,8 +419,9 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     row = 3
     for cat, v in sorted_cats:
         top = '、'.join(f"{s}({n})" for s,n in sorted(v['subs'].items(), key=lambda x:-x[1])[:4])
+        delta = format_weekly_category_delta(v['total'], previous_category_counts.get(cat, 0))
         bg = '1E2235' if row%2==0 else '161925'
-        for c2,(val,color,bold) in enumerate([(cat,'E2E8F0',False),(v['total'],'5B8CFF',True),(top,'94A3B8',False)], 1):
+        for c2,(val,color,bold) in enumerate([(cat,'E2E8F0',False),(v['total'],'5B8CFF',True),(top,'94A3B8',False),(delta,'FBBF24',False)], 1):
             c = ws2.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=bold, color=color, size=10)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
@@ -422,13 +432,13 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     bar.add_data(data_r, titles_from_data=True); bar.set_categories(cats_r)
     ws2.add_chart(bar, 'E2')
 
-    # ===== ③ 處理狀態 + 所有未結案總覽 =====
+    # ===== ③ 處理狀態 + 超過7天未結案追蹤 =====
     ws3 = wb.create_sheet('③ 處理狀態總覽')
     ws3.sheet_view.showGridLines = False
-    title_row(ws3, 1, f'📋 處理狀態總覽　｜　{label}', 7)
-    set_hdr(ws3, 2, ['處理狀態','件數','處理人員','進線日期時間','重點說明（未結案優先）'])
+    title_row(ws3, 1, f'📋 處理狀態總覽　｜　{label}', 8)
+    set_hdr(ws3, 2, ['處理狀態','件數','處理人員','重點說明'])
     ws3.column_dimensions['A'].width = 14; ws3.column_dimensions['B'].width = 8
-    ws3.column_dimensions['C'].width = 22; ws3.column_dimensions['D'].width = 18; ws3.column_dimensions['E'].width = 60
+    ws3.column_dimensions['C'].width = 24; ws3.column_dimensions['D'].width = 72
 
     status_groups = {}
     for r in records:
@@ -437,10 +447,9 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     row = 3
     for st, rows in sorted(status_groups.items(), key=lambda x: -len(x[1])):
         handlers = '、'.join(set(r['handler'] for r in rows if r.get('handler')))
-        incoming_times = build_incoming_time_summary(rows)
         notes = build_status_focus(rows)
         bg = '1E2235' if row%2==0 else '161925'
-        for c2, val in enumerate([st, len(rows), handlers, incoming_times, notes], 1):
+        for c2, val in enumerate([st, len(rows), handlers, notes], 1):
             c = ws3.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=(c2==1), color=STATUS_COLORS.get(st,'E2E8F0') if c2==1 else 'E2E8F0', size=10)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
@@ -457,39 +466,55 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     pie2.add_data(d2, titles_from_data=True); pie2.set_categories(lb2)
     ws3.add_chart(pie2, 'F2')
 
-    # ===== 所有未結案總覽（接在圓餅圖資料後） =====
+    # ===== 超過7天未結案追蹤（接在圓餅圖資料後） =====
     section_start = chart_row + len(status_groups) + 3
     write_all_open_section(ws3, section_start, all_records)
 
-    # ===== ④ 逾7天未結案 =====
-    ws4 = wb.create_sheet('④ 逾7天未結案')
+    # ===== 說明 =====
+    ws4 = wb.create_sheet('📖 說明')
     ws4.sheet_view.showGridLines = False
-    max_days = max([(datetime.now()-datetime.fromisoformat(r['date'])).days for r in od if r.get('date')], default=0) if od else 0
-    ws4.merge_cells('A1:H1')
-    sc = ws4.cell(row=1, column=1, value=f'⚠️  截至報告日共 {len(od)} 筆超過7天未結案　｜　最長已逾 {max_days} 天　｜　報告日期：{to_date}')
-    sc.font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
-    sc.fill = fill('7F1D1D'); sc.alignment = ca('left')
-    ws4.row_dimensions[1].height = 22
-    set_hdr(ws4, 2, ['編號','進線日期時間','車牌','公司名稱','問題次分類','處理狀態','負責人員','已逾天數'])
-    for col, w in [('A',18),('B',16),('C',16),('D',14),('E',26),('F',14),('G',12),('H',14)]:
-        ws4.column_dimensions[col].width = w
-    row = 3
-    for r in sorted(od, key=lambda x: x.get('date','')):
-        try: days = (datetime.now()-datetime.fromisoformat(r['date'])).days
-        except: days = 0
-        day_color = 'F87171' if days>14 else 'FB923C'
-        bg = '2A1515' if row%2==0 else '221212'
-        vals = [r.get('id',''),fmt_dt(r.get('date')),r.get('plate',''),r.get('company',''),r.get('subcategory',''),r.get('status',''),r.get('handler','—'),f'{days}天']
-        colors = ['E2E8F0','94A3B8','94A3B8','FFFFFF','94A3B8',STATUS_COLORS.get(r.get('status',''),'E2E8F0'),'E2E8F0',day_color]
-        for c2,(val,color) in enumerate(zip(vals,colors),1):
-            c = ws4.cell(row=row, column=c2, value=val)
-            c.font = Font(name='Arial', bold=(c2==8), color=color, size=10)
-            c.fill = fill(bg); c.alignment = ca(); c.border = border()
-        ws4.row_dimensions[row].height = 16; row += 1
-    if not od:
-        ws4.merge_cells('A3:H3')
-        c = ws4.cell(row=3, column=1, value='✅ 本週無超過7天未結案')
-        c.font = Font(name='Arial', bold=True, color='34D399', size=12); c.alignment = ca()
+    ws4.column_dimensions['A'].width = 24
+    ws4.column_dimensions['B'].width = 72
+    title_row(ws4, 1, '📖 週報說明文件', 2, bg='2D3250')
+
+    explanation_rows = [
+        (3, '📌 案件編號格式', ''),
+        (4, '一般案件', 'YYYYMMDD-流水號 / 例：20260522-001'),
+        (5, '子案件', '母案件編號-子流水號 / 例：20260422-003-02'),
+        (7, '🔄 處理狀態定義', ''),
+        (8, '客服處理中', '客服人員正在跟進，尚未派工'),
+        (9, '待派工', '已確認需派技師或工程師，尚未指派人員'),
+        (10, '待客戶確認', '已提供報價或方案，等待客戶回覆確認'),
+        (11, '轉派技師', '已指派外部技師前往現場處理'),
+        (12, '轉派工程師', '已指派內部工程師深入處理'),
+        (13, '待客戶寄回', '需客戶將設備寄回公司'),
+        (14, '結案', '問題已解決並確認，案件關閉'),
+        (16, '⚠️ 超過7天未結案計算邏輯', ''),
+        (17, '計算基準', '從「進線日期時間」起算'),
+        (18, '篩選條件', '狀態不是「結案」，且已等待 > 7 天'),
+        (19, '範圍', '全期間所有案件，不限本週進線'),
+        (20, '排除條件', '負責人為「客戶」的案件不列入'),
+        (22, '🎨 顏色說明（Sheet③ 追蹤表）', ''),
+        (23, '🔴 紅底', '已等待 >= 7 天，高風險'),
+        (24, '🟡 黃底', '已等待 3~6 天，追蹤中'),
+        (25, '⬜ 白/灰', '已等待 0~2 天，正常'),
+    ]
+
+    for row, left, right in explanation_rows:
+        if right == '':
+            ws4.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+            c = ws4.cell(row=row, column=1, value=left)
+            c.font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
+            c.fill = fill('2D3250')
+            c.alignment = ca('left')
+        else:
+            for col, val in [(1, left), (2, right)]:
+                c = ws4.cell(row=row, column=col, value=val)
+                c.font = Font(name='Arial', bold=(col == 1), color='E2E8F0', size=10)
+                c.fill = fill('161925' if row % 2 else '1E2235')
+                c.alignment = ca('left', wrap=True)
+                c.border = border()
+        ws4.row_dimensions[row].height = 20
 
     return wb
 
