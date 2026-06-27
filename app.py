@@ -4,6 +4,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import PieChart, BarChart, LineChart, Reference
+from openpyxl.chart.label import DataLabelList
 from datetime import datetime, timezone, timedelta
 import base64
 import hashlib
@@ -50,6 +51,17 @@ def weekly_title_row(ws, row, text, ncols, bg='5B8CFF'):
 
 def weekly_font(color='F8FAFC', bold=False, size=12):
     return Font(name='Arial', bold=bold, color=color, size=size)
+
+def style_weekly_chart(chart, width=20, height=13, show_values=False, show_percent=False):
+    chart.style = 10
+    chart.width = width
+    chart.height = height
+    if show_values or show_percent:
+        chart.dataLabels = DataLabelList()
+        chart.dataLabels.showVal = show_values
+        chart.dataLabels.showPercent = show_percent
+        chart.dataLabels.showLeaderLines = True
+    return chart
 
 def calc_dur(s, e):
     if not s or not e: return ''
@@ -203,7 +215,7 @@ def is_parent(r):
     parts = r.get('id', '').split('-')
     return len(parts) == 2
 
-# ===== 所有未結案追蹤區段（週報 ③ 下方用）=====
+# ===== 所有未結案追蹤區段（週報獨立頁籤用）=====
 def get_wait_reference_value(r):
     return r.get('date') or ''
 
@@ -431,7 +443,8 @@ def generate_weekly(records, from_date, to_date, all_records=None):
         c.font = weekly_font('FFFFFF', bold=True, size=12)
         c.fill = fill('2D3250'); c.alignment = ca(); c.border = border()
     ws1.row_dimensions[row].height = 36
-    pie = PieChart(); pie.title='進線管道佔比'; pie.style=10; pie.width=14; pie.height=10
+    pie = PieChart(); pie.title='進線管道佔比'
+    style_weekly_chart(pie, width=20, height=13, show_percent=True)
     labels = Reference(ws1, min_col=1, min_row=3, max_row=2+len(ch_c))
     data = Reference(ws1, min_col=2, min_row=2, max_row=2+len(ch_c))
     pie.add_data(data, titles_from_data=True); pie.set_categories(labels)
@@ -464,13 +477,14 @@ def generate_weekly(records, from_date, to_date, all_records=None):
             c.font = weekly_font(body_color, bold=bold, size=12)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
         ws2.row_dimensions[row].height = 50; row += 1
-    bar = BarChart(); bar.type='bar'; bar.title='問題大類件數'; bar.style=10; bar.width=16; bar.height=12
+    bar = BarChart(); bar.type='bar'; bar.title='問題大類件數'
+    style_weekly_chart(bar, width=22, height=14, show_values=True)
     cats_r = Reference(ws2, min_col=1, min_row=3, max_row=2+len(sorted_cats))
     data_r = Reference(ws2, min_col=2, min_row=2, max_row=2+len(sorted_cats))
     bar.add_data(data_r, titles_from_data=True); bar.set_categories(cats_r)
     ws2.add_chart(bar, 'E2')
 
-    # ===== ③ 處理狀態 + 超過7天未結案追蹤 =====
+    # ===== ③ 處理狀態總覽 =====
     ws3 = wb.create_sheet('③ 處理狀態總覽')
     ws3.sheet_view.showGridLines = False
     weekly_title_row(ws3, 1, f'📋 處理狀態總覽　｜　{label}', 8)
@@ -498,22 +512,24 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     ws3.cell(row=chart_row, column=1, value='狀態'); ws3.cell(row=chart_row, column=2, value='件數')
     for i,(st,rows) in enumerate(sorted(status_groups.items(), key=lambda x:-len(x[1])),1):
         ws3.cell(row=chart_row+i, column=1, value=st); ws3.cell(row=chart_row+i, column=2, value=len(rows))
-    pie2 = PieChart(); pie2.title='處理狀態分佈'; pie2.style=10; pie2.width=14; pie2.height=10
+    pie2 = PieChart(); pie2.title='處理狀態分佈'
+    style_weekly_chart(pie2, width=20, height=13, show_percent=True)
     lb2 = Reference(ws3, min_col=1, min_row=chart_row+1, max_row=chart_row+len(status_groups))
     d2 = Reference(ws3, min_col=2, min_row=chart_row, max_row=chart_row+len(status_groups))
     pie2.add_data(d2, titles_from_data=True); pie2.set_categories(lb2)
     ws3.add_chart(pie2, 'F2')
 
-    # ===== 超過7天未結案追蹤（接在圓餅圖資料後） =====
-    section_start = chart_row + len(status_groups) + 3
-    write_all_open_section(ws3, section_start, all_records)
+    # ===== ④ 未結案追蹤 =====
+    ws4 = wb.create_sheet('④ 未結案追蹤')
+    ws4.sheet_view.showGridLines = False
+    write_all_open_section(ws4, 0, all_records)
 
     # ===== 說明 =====
-    ws4 = wb.create_sheet('📖 說明')
-    ws4.sheet_view.showGridLines = False
-    ws4.column_dimensions['A'].width = 24
-    ws4.column_dimensions['B'].width = 72
-    weekly_title_row(ws4, 1, '📖 週報說明文件', 2, bg='2D3250')
+    ws5 = wb.create_sheet('📖 說明')
+    ws5.sheet_view.showGridLines = False
+    ws5.column_dimensions['A'].width = 24
+    ws5.column_dimensions['B'].width = 72
+    weekly_title_row(ws5, 1, '📖 週報說明文件', 2, bg='2D3250')
 
     explanation_rows = [
         (3, '📌 案件編號格式', ''),
@@ -532,7 +548,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
         (18, '篩選條件', '狀態不是「結案」，且已等待 > 7 天'),
         (19, '範圍', '全期間所有案件，不限本週進線'),
         (20, '排除條件', '負責人為「客戶」的案件不列入'),
-        (22, '🎨 顏色說明（Sheet③ 追蹤表）', ''),
+        (22, '🎨 顏色說明（Sheet④ 未結案追蹤）', ''),
         (23, '🔴 紅底', '已等待 >= 7 天，高風險'),
         (24, '🟡 黃底', '已等待 3~6 天，追蹤中'),
         (25, '⬜ 白/灰', '已等待 0~2 天，正常'),
@@ -540,20 +556,20 @@ def generate_weekly(records, from_date, to_date, all_records=None):
 
     for row, left, right in explanation_rows:
         if right == '':
-            ws4.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
-            c = ws4.cell(row=row, column=1, value=left)
+            ws5.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
+            c = ws5.cell(row=row, column=1, value=left)
             c.font = weekly_font('FFFFFF', bold=True, size=12)
             c.fill = fill('2D3250')
             c.alignment = ca('left')
-            ws4.row_dimensions[row].height = 24
+            ws5.row_dimensions[row].height = 24
         else:
             for col, val in [(1, left), (2, right)]:
-                c = ws4.cell(row=row, column=col, value=val)
+                c = ws5.cell(row=row, column=col, value=val)
                 c.font = weekly_font('F8FAFC' if col == 1 else 'E2E8F0', bold=(col == 1), size=12)
                 c.fill = fill('161925' if row % 2 else '1E2235')
                 c.alignment = ca('left', wrap=True)
                 c.border = border()
-            ws4.row_dimensions[row].height = 22
+            ws5.row_dimensions[row].height = 22
 
     return wb
 
