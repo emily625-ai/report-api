@@ -408,7 +408,8 @@ def generate_weekly(records, from_date, to_date, all_records=None):
 
     handler_c = {}
     for r in records:
-        if r.get('handler'): handler_c[r['handler']] = handler_c.get(r['handler'], 0) + 1
+        handler = r.get('handler') or '未指派'
+        handler_c[handler] = handler_c.get(handler, 0) + 1
     row = 11
     for h, cnt in sorted(handler_c.items(), key=lambda x: -x[1]):
         bg = '1E2235' if row%2==0 else '161925'
