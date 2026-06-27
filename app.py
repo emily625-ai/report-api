@@ -58,6 +58,13 @@ def fmt_dt(value):
         return ''
     return str(value).replace('T', ' ')[:16]
 
+def get_subcategory_label(r):
+    subcategory = r.get('subcategory') or '其他'
+    note = (r.get('subcategoryNote') or r.get('subcategory_note') or '').strip()
+    if note and (r.get('category') == '其他' or subcategory == '其他'):
+        return f'{subcategory}（{note}）'
+    return subcategory
+
 def build_status_focus(rows):
     grouped = {}
     for r in rows:
@@ -70,7 +77,7 @@ def build_status_focus(rows):
         company_rows = sorted(grouped[company], key=lambda item: item.get('date') or '')
         problem_counts = {}
         for r in company_rows:
-            subcategory = r.get('subcategory') or '未填問題'
+            subcategory = get_subcategory_label(r) or '未填問題'
             problem_counts[subcategory] = problem_counts.get(subcategory, 0) + 1
 
         problems = []
@@ -185,7 +192,7 @@ def is_parent(r):
     parts = r.get('id', '').split('-')
     return len(parts) == 2
 
-# ===== 超過7天未結案追蹤區段（週報 ③ 下方用）=====
+# ===== 所有未結案追蹤區段（週報 ③ 下方用）=====
 def get_wait_reference_value(r):
     return r.get('date') or ''
 
@@ -199,20 +206,20 @@ def get_wait_days(r):
         return 0
 
 def write_all_open_section(ws, start_row, all_records):
-    """在指定 row 寫入截至今日超過 7 天未結案追蹤，回傳結束後的 row。"""
-    overdue_cases = [r for r in all_records if is_dispatch_overdue(r)]
+    """在指定 row 寫入全期間所有未結案追蹤，回傳結束後的 row。"""
+    open_cases = [r for r in all_records if r.get('status') != '結案']
 
     ws.row_dimensions[start_row].height = 10
     row = start_row + 1
 
-    if not overdue_cases:
+    if not open_cases:
         ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=8)
-        c = ws.cell(row=row, column=1, value='✅ 目前無超過7天未結案案件')
+        c = ws.cell(row=row, column=1, value='✅ 目前無未結案案件')
         c.font = Font(name='Arial', bold=True, color='34D399', size=11)
         c.alignment = ca()
         return row + 1
 
-    title_row(ws, row, f'📌 超過7天未結案追蹤（截至今日，全期間共 {len(overdue_cases)} 筆）', 8, bg='2D3250')
+    title_row(ws, row, f'📌 未結案追蹤（全期間，共 {len(open_cases)} 筆）', 8, bg='2D3250')
     row += 1
 
     set_hdr(ws, row, ['已等待', '進線日期', '公司名稱', '車牌', '問題次分類', '處理狀態', '負責人員', '備註說明'])
@@ -220,13 +227,29 @@ def write_all_open_section(ws, start_row, all_records):
         ws.column_dimensions[col].width = w
     row += 1
 
-    for r in sorted(overdue_cases, key=lambda x: get_wait_days(x), reverse=True):
+    for r in sorted(open_cases, key=lambda x: get_wait_days(x), reverse=True):
         _write_open_row(ws, row, r, is_child=not is_parent(r))
         row += 1
 
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
     c = ws.cell(row=row, column=1, value='🔴  逾7天（高風險）')
     c.font = Font(name='Arial', bold=True, color='F87171', size=10)
+    c.fill = fill('1E2235')
+    c.alignment = ca('left')
+    ws.row_dimensions[row].height = 18
+    row += 1
+
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+    c = ws.cell(row=row, column=1, value='🟡  3~6天（追蹤中）')
+    c.font = Font(name='Arial', bold=True, color='FB923C', size=10)
+    c.fill = fill('1E2235')
+    c.alignment = ca('left')
+    ws.row_dimensions[row].height = 18
+    row += 1
+
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
+    c = ws.cell(row=row, column=1, value='⬜  0~2天（正常）')
+    c.font = Font(name='Arial', bold=True, color='E2E8F0', size=10)
     c.fill = fill('1E2235')
     c.alignment = ca('left')
     ws.row_dimensions[row].height = 18
@@ -248,7 +271,7 @@ def _write_open_row(ws, row, r, is_child=False):
         id_prefix + r.get('id', ''),
         r.get('company', ''),
         r.get('plate', ''),
-        r.get('subcategory', ''),
+        get_subcategory_label(r),
         r.get('handler', '—'),
         r.get('date', '')[:10] if r.get('date') else '',
         wait_str
@@ -279,7 +302,7 @@ def _write_open_row(ws, row, r, is_child=False):
         wait_date,
         r.get('company', ''),
         r.get('plate', ''),
-        r.get('subcategory', ''),
+        get_subcategory_label(r),
         r.get('status', ''),
         r.get('handler', '—'),
         r.get('result') or r.get('description') or ''
@@ -413,7 +436,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
         k = r.get('category') or '其他'
         if k not in cat_map: cat_map[k] = {'total':0,'subs':{}}
         cat_map[k]['total'] += 1
-        s = r.get('subcategory') or '其他'
+        s = get_subcategory_label(r)
         cat_map[k]['subs'][s] = cat_map[k]['subs'].get(s,0)+1
     sorted_cats = sorted(cat_map.items(), key=lambda x: -x[1]['total'])
     row = 3
@@ -703,7 +726,7 @@ def generate_monthly(records, from_date, to_date):
         days = get_elapsed_days_as_of(r, report_end)
         day_color = 'F87171' if days>14 else 'FB923C'
         bg = '2A1515' if row%2==0 else '221212'
-        vals = [fmt_dt(r.get('date')),r.get('plate',''),r.get('company',''),r.get('subcategory',''),r.get('status',''),r.get('handler','—'),f'{days}天']
+        vals = [fmt_dt(r.get('date')),r.get('plate',''),r.get('company',''),get_subcategory_label(r),r.get('status',''),r.get('handler','—'),f'{days}天']
         colors = ['94A3B8','94A3B8','FFFFFF','94A3B8',STATUS_COLORS.get(r.get('status',''),'E2E8F0'),'E2E8F0',day_color]
         for c2,(val,color) in enumerate(zip(vals,colors),1):
             c = ws4.cell(row=row, column=c2, value=val)
@@ -726,7 +749,7 @@ def generate_monthly(records, from_date, to_date):
         k = r.get('category') or '其他'
         if k not in cat_map: cat_map[k] = {'total':0,'subs':{}}
         cat_map[k]['total'] += 1
-        s = r.get('subcategory') or '其他'
+        s = get_subcategory_label(r)
         cat_map[k]['subs'][s] = cat_map[k]['subs'].get(s,0)+1
     sorted_cats = sorted(cat_map.items(), key=lambda x:-x[1]['total'])
     row = 3
