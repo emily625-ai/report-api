@@ -257,7 +257,7 @@ def write_all_open_section(ws, start_row, all_records):
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
     c = ws.cell(row=row, column=1, value='🔴  逾7天（高風險）')
     c.font = weekly_font('F87171', bold=True, size=12)
-    c.fill = fill('334155')
+    c.fill = fill('F8FAFC')
     c.alignment = ca('left')
     ws.row_dimensions[row].height = 18
     row += 1
@@ -265,7 +265,7 @@ def write_all_open_section(ws, start_row, all_records):
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
     c = ws.cell(row=row, column=1, value='🟡  3~6天（追蹤中）')
     c.font = weekly_font('FB923C', bold=True, size=12)
-    c.fill = fill('334155')
+    c.fill = fill('F8FAFC')
     c.alignment = ca('left')
     ws.row_dimensions[row].height = 18
     row += 1
@@ -273,7 +273,7 @@ def write_all_open_section(ws, start_row, all_records):
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
     c = ws.cell(row=row, column=1, value='⬜  0~2天（正常）')
     c.font = weekly_font('334155', bold=True, size=12)
-    c.fill = fill('334155')
+    c.fill = fill('F8FAFC')
     c.alignment = ca('left')
     ws.row_dimensions[row].height = 18
     return row + 1
@@ -412,7 +412,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
         handler_c[handler] = handler_c.get(handler, 0) + 1
     row = 11
     for h, cnt in sorted(handler_c.items(), key=lambda x: -x[1]):
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for col, val in [(2, h),(3, f'{cnt} 件')]:
             c = ws0.cell(row=row, column=col, value=val)
             c.font = weekly_font('334155', size=12)
@@ -431,7 +431,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     for r in records: ch_c[r.get('channel') or '未知'] = ch_c.get(r.get('channel') or '未知', 0) + 1
     row = 3
     for ch, cnt in sorted(ch_c.items(), key=lambda x: -x[1]):
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for c2, (val, color, bold) in enumerate([(ch,'475569',False),(cnt,'5B8CFF',True),(f'{cnt/total*100:.1f}%' if total else '0%','64748B',False)], 1):
             c = ws1.cell(row=row, column=c2, value=val)
             body_color = '334155' if c2 == 1 else color
@@ -471,7 +471,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     for cat, v in sorted_cats:
         top = '、'.join(f"{s}({n})" for s,n in sorted(v['subs'].items(), key=lambda x:-x[1])[:4])
         delta = format_weekly_category_delta(v['total'], previous_category_counts.get(cat, 0))
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for c2,(val,color,bold) in enumerate([(cat,'475569',False),(v['total'],'5B8CFF',True),(top,'64748B',False),(delta,'FBBF24',False)], 1):
             c = ws2.cell(row=row, column=c2, value=val)
             body_color = color if c2 in (2, 4) else '334155'
@@ -501,7 +501,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     for st, rows in sorted(status_groups.items(), key=lambda x: -len(x[1])):
         handlers = '、'.join(set(r['handler'] for r in rows if r.get('handler')))
         notes = build_status_focus(rows)
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for c2, val in enumerate([st, len(rows), handlers, notes], 1):
             c = ws3.cell(row=row, column=c2, value=val)
             c.font = weekly_font(STATUS_COLORS.get(st,'FFFFFF') if c2==1 else '334155', bold=(c2==1), size=12)
@@ -567,7 +567,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
             for col, val in [(1, left), (2, right)]:
                 c = ws5.cell(row=row, column=col, value=val)
                 c.font = weekly_font('334155' if col == 1 else '475569', bold=(col == 1), size=12)
-                c.fill = fill('FFFFFF' if row % 2 else '334155')
+                c.fill = fill('FFFFFF' if row % 2 else 'F8FAFC')
                 c.alignment = ca('left', wrap=True)
                 c.border = border()
             ws5.row_dimensions[row].height = 22
@@ -643,7 +643,7 @@ def generate_monthly(records, from_date, to_date):
         if r.get('handler'): handler_c[r['handler']] = handler_c.get(r['handler'], 0)+1
     row = 15
     for h, cnt in sorted(handler_c.items(), key=lambda x:-x[1]):
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for col, val in [(2,h),(3,f'{cnt} 件')]:
             c = ws0.cell(row=row, column=col, value=val)
             c.font = Font(name='Arial', size=10, color='475569')
@@ -660,7 +660,7 @@ def generate_monthly(records, from_date, to_date):
     for r in records: ch_c[r.get('channel') or '未知'] = ch_c.get(r.get('channel') or '未知',0)+1
     row = 3
     for ch, cnt in sorted(ch_c.items(), key=lambda x:-x[1]):
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for c2,(val,color,bold) in enumerate([(ch,'475569',False),(cnt,'5B8CFF',True),(f'{cnt/total*100:.1f}%' if total else '0%','64748B',False)],1):
             c = ws1.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=bold, color=color, size=10)
@@ -690,7 +690,7 @@ def generate_monthly(records, from_date, to_date):
     PROD_COLORS = ['5B8CFF','34D399','FBBF24','A78BFA','64748B']
     row = 3
     for i,(prod,cnt) in enumerate(prod_list):
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for c2,(val,color,bold) in enumerate([(prod,PROD_COLORS[i%5],True),(cnt,'FFFFFF',True),(f'{cnt/total_prod*100:.1f}%' if total_prod else '0%','64748B',False)],1):
             c = ws2.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=bold, color=color, size=10)
@@ -731,7 +731,7 @@ def generate_monthly(records, from_date, to_date):
     row = 3
     for rank,(co,cnt) in enumerate(top5,1):
         issues = '、'.join(f"{k}({v})" for k,v in sorted(company_issues.get(co,{}).items(), key=lambda x:-x[1])[:2])
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for c2,(val,color,bold) in enumerate([(rank,rank_colors[rank-1],rank<=3),(co,'FFFFFF',False),(cnt,'5B8CFF',True),(issues,'64748B',False)],1):
             c = ws3.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=bold, color=color, size=10)
@@ -788,7 +788,7 @@ def generate_monthly(records, from_date, to_date):
     row = 3
     for cat, v in sorted_cats:
         top = '、'.join(f"{s}({n})" for s,n in sorted(v['subs'].items(), key=lambda x:-x[1])[:4])
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for c2,(val,color,bold) in enumerate([(cat,'475569',False),(v['total'],'5B8CFF',True),(top,'64748B',False)],1):
             c = ws5.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=bold, color=color, size=10)
@@ -815,7 +815,7 @@ def generate_monthly(records, from_date, to_date):
     for st, rows in sorted(status_groups.items(), key=lambda x:-len(x[1])):
         handlers = '、'.join(set(r['handler'] for r in rows if r.get('handler')))
         notes = build_status_focus(rows)
-        bg = '334155' if row%2==0 else 'FFFFFF'
+        bg = 'F8FAFC' if row%2==0 else 'FFFFFF'
         for c2, val in enumerate([st,len(rows),handlers,notes],1):
             c = ws6.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=(c2==1), color=STATUS_COLORS.get(st,'475569') if c2==1 else '475569', size=10)
