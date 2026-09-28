@@ -341,6 +341,54 @@ def _write_open_row(ws, row, r, is_child=False):
         c.border = border()
     ws.row_dimensions[row].height = 24
 
+# ===== WEEKLY DETAIL =====
+def write_weekly_detail(ws, records, from_date, to_date):
+    ws.sheet_view.showGridLines = False
+    ws.freeze_panes = 'A3'
+    weekly_title_row(ws, 1, f'🧾 本週案件明細　｜　{from_date} ～ {to_date}　｜　共 {len(records)} 筆', 16)
+    headers = ['案件編號','進線日期時間','進線管道','公司名稱','車牌','產品別','案件性質','問題大類','問題次分類','追蹤類型','追蹤主題','處理狀態','負責人員','處理結果','分類版本','分類來源']
+    weekly_hdr(ws, 2, headers)
+    widths = [16,20,14,18,12,16,14,18,24,18,24,16,14,36,18,16]
+    for index, width in enumerate(widths, 1):
+        ws.column_dimensions[get_column_letter(index)].width = width
+
+    for row, record in enumerate(sorted(records, key=lambda item: item.get('date') or ''), 3):
+        values = [
+            record.get('id') or '',
+            fmt_dt(record.get('date')),
+            record.get('channel') or '',
+            record.get('company') or '',
+            record.get('plate') or '',
+            record.get('new_product') or record.get('product') or '',
+            record.get('case_nature') or '',
+            record.get('new_category') or record.get('category') or '',
+            record.get('new_subcategory') or get_subcategory_label(record),
+            record.get('tracking_type') or '',
+            record.get('tracking_topic') or '',
+            record.get('status') or '',
+            record.get('handler') or '未指派',
+            record.get('result') or record.get('description') or '',
+            record.get('classification_version') or '',
+            record.get('classification_source') or ''
+        ]
+        bg = 'F8FAFC' if row % 2 == 0 else 'FFFFFF'
+        for column, value in enumerate(values, 1):
+            cell = ws.cell(row=row, column=column, value=value)
+            color = STATUS_COLORS.get(record.get('status'), '334155') if column == 12 else '334155'
+            cell.font = weekly_font(color, bold=(column in (1, 12)), size=10)
+            cell.fill = fill(bg)
+            cell.alignment = ca('left', wrap=True) if column not in (2, 12) else ca(wrap=True)
+            cell.border = border()
+        ws.row_dimensions[row].height = 34
+
+    if not records:
+        ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=16)
+        cell = ws.cell(row=3, column=1, value='本週沒有案件')
+        cell.font = weekly_font('64748B', bold=True, size=12)
+        cell.fill = fill('FFFFFF')
+        cell.alignment = ca('center')
+        cell.border = border()
+
 # ===== WEEKLY REPORT =====
 def generate_weekly(records, from_date, to_date, all_records=None):
     if all_records is None:
@@ -571,6 +619,11 @@ def generate_weekly(records, from_date, to_date, all_records=None):
                 c.alignment = ca('left', wrap=True)
                 c.border = border()
             ws5.row_dimensions[row].height = 22
+
+
+    # ===== ⑤ 本週案件明細 =====
+    ws_detail = wb.create_sheet('⑤ 本週案件明細')
+    write_weekly_detail(ws_detail, records, from_date, to_date)
 
     return wb
 
