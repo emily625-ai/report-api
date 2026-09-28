@@ -89,10 +89,11 @@ def get_subcategory_label(r):
     return subcategory
 
 def get_report_category(r):
-    return r.get('new_category') or r.get('category') or '其他'
+    # Keep the report on the legacy classification until V2 is approved.
+    return r.get('category') or '其他'
 
 def get_report_subcategory_label(r):
-    return r.get('new_subcategory') or get_subcategory_label(r)
+    return get_subcategory_label(r)
 
 def build_status_focus(rows):
     grouped = {}
