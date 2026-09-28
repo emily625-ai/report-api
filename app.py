@@ -20,36 +20,36 @@ CORS(app)
 
 # ===== Style helpers =====
 def fill(c): return PatternFill('solid', start_color=c)
-def border(): return Border(bottom=Side(style='thin', color='2D3250'), right=Side(style='thin', color='2D3250'))
+def border(): return Border(bottom=Side(style='thin', color='D9E2F3'), right=Side(style='thin', color='D9E2F3'))
 def ca(h='center', v='center', wrap=False): return Alignment(horizontal=h, vertical=v, wrap_text=wrap)
 STATUS_COLORS = {'結案':'34D399','轉派技師':'FBBF24','轉派工程師':'A78BFA','客服處理中':'5B8CFF','待派工':'FB923C','待客戶寄回':'F87171'}
 BC = ['5B8CFF','7C6CFF','34D399','FBBF24','F87171','FB923C','A78BFA','38BDF8','F472B6']
 
-def set_hdr(ws, row, cols, font_size=10, font_color='94A3B8', row_height=None):
+def set_hdr(ws, row, cols, font_size=10, font_color='334155', row_height=None):
     for c, val in enumerate(cols, 1):
         cell = ws.cell(row=row, column=c, value=val)
         cell.font = Font(name='Arial', bold=True, color=font_color, size=font_size)
-        cell.fill = fill('2D3250')
+        cell.fill = fill('D9E2F3')
         cell.alignment = ca()
         cell.border = border()
     if row_height:
         ws.row_dimensions[row].height = row_height
 
-def title_row(ws, row, text, ncols, bg='5B8CFF', font_size=12, row_height=22):
+def title_row(ws, row, text, ncols, bg='DCE6F1', font_size=12, row_height=22):
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=ncols)
     c = ws.cell(row=row, column=1, value=text)
-    c.font = Font(name='Arial', bold=True, color='FFFFFF', size=font_size)
+    c.font = Font(name='Arial', bold=True, color='1F2937', size=font_size)
     c.fill = fill(bg)
     c.alignment = ca('left')
     ws.row_dimensions[row].height = row_height
 
 def weekly_hdr(ws, row, cols):
-    set_hdr(ws, row, cols, font_size=12, font_color='FFFFFF', row_height=34)
+    set_hdr(ws, row, cols, font_size=12, font_color='1F2937', row_height=34)
 
-def weekly_title_row(ws, row, text, ncols, bg='5B8CFF'):
+def weekly_title_row(ws, row, text, ncols, bg='DCE6F1'):
     title_row(ws, row, text, ncols, bg=bg, font_size=14, row_height=40)
 
-def weekly_font(color='F8FAFC', bold=False, size=12):
+def weekly_font(color='334155', bold=False, size=12):
     return Font(name='Arial', bold=bold, color=color, size=size)
 
 def style_weekly_chart(chart, width=20, height=13, show_values=False, show_percent=False):
@@ -242,7 +242,7 @@ def write_all_open_section(ws, start_row, all_records):
         c.alignment = ca()
         return row + 1
 
-    weekly_title_row(ws, row, f'📌 未結案追蹤（全期間，共 {len(open_cases)} 筆）', 8, bg='2D3250')
+    weekly_title_row(ws, row, f'📌 未結案追蹤（全期間，共 {len(open_cases)} 筆）', 8, bg='D9E2F3')
     row += 1
 
     weekly_hdr(ws, row, ['已等待', '進線日期', '公司名稱', '車牌', '問題次分類', '處理狀態', '負責人員', '備註說明'])
@@ -257,7 +257,7 @@ def write_all_open_section(ws, start_row, all_records):
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
     c = ws.cell(row=row, column=1, value='🔴  逾7天（高風險）')
     c.font = weekly_font('F87171', bold=True, size=12)
-    c.fill = fill('1E2235')
+    c.fill = fill('334155')
     c.alignment = ca('left')
     ws.row_dimensions[row].height = 18
     row += 1
@@ -265,15 +265,15 @@ def write_all_open_section(ws, start_row, all_records):
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
     c = ws.cell(row=row, column=1, value='🟡  3~6天（追蹤中）')
     c.font = weekly_font('FB923C', bold=True, size=12)
-    c.fill = fill('1E2235')
+    c.fill = fill('334155')
     c.alignment = ca('left')
     ws.row_dimensions[row].height = 18
     row += 1
 
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=3)
     c = ws.cell(row=row, column=1, value='⬜  0~2天（正常）')
-    c.font = weekly_font('F8FAFC', bold=True, size=12)
-    c.fill = fill('1E2235')
+    c.font = weekly_font('334155', bold=True, size=12)
+    c.fill = fill('334155')
     c.alignment = ca('left')
     ws.row_dimensions[row].height = 18
     return row + 1
@@ -286,8 +286,8 @@ def _write_open_row(ws, row, r, is_child=False):
         wait_days = 0
 
     wait_str = f'{wait_days}天'
-    wait_color = 'F87171' if wait_days > 14 else ('FB923C' if wait_days > 7 else 'E2E8F0')
-    bg = '1A1D27' if is_child else '161925'
+    wait_color = 'F87171' if wait_days > 14 else ('FB923C' if wait_days > 7 else '475569')
+    bg = 'FFFFFF' if is_child else 'FFFFFF'
     id_prefix = '  ↳ ' if is_child else ''
 
     vals = [
@@ -299,7 +299,7 @@ def _write_open_row(ws, row, r, is_child=False):
         r.get('date', '')[:10] if r.get('date') else '',
         wait_str
     ]
-    colors = ['A78BFA' if is_child else 'E2E8F0', 'FFFFFF', '94A3B8', '94A3B8', 'E2E8F0', '94A3B8', wait_color]
+    colors = ['A78BFA' if is_child else '475569', 'FFFFFF', '64748B', '64748B', '475569', '64748B', wait_color]
     bolds = [True, False, False, False, False, False, True]
 
     for c2, (val, color, bold) in enumerate(zip(vals, colors, bolds), 1):
@@ -314,8 +314,8 @@ def _write_open_row(ws, row, r, is_child=False):
 def _write_open_row(ws, row, r, is_child=False):
     wait_days = get_wait_days(r)
     wait_str = f'{wait_days}天'
-    wait_color = 'F87171' if wait_days >= 7 else ('FB923C' if wait_days >= 3 else 'E2E8F0')
-    bg = '1A1D27' if is_child else '161925'
+    wait_color = 'F87171' if wait_days >= 7 else ('FB923C' if wait_days >= 3 else '475569')
+    bg = 'FFFFFF' if is_child else 'FFFFFF'
 
     wait_reference = get_wait_reference_value(r)
     wait_date = fmt_dt(wait_reference)[:10]
@@ -330,7 +330,7 @@ def _write_open_row(ws, row, r, is_child=False):
         r.get('handler', '—'),
         r.get('result') or r.get('description') or ''
     ]
-    colors = [wait_color, 'E2E8F0', 'FFFFFF', 'E2E8F0', 'F8FAFC', STATUS_COLORS.get(r.get('status',''),'FFFFFF'), 'FFFFFF', 'E2E8F0']
+    colors = [wait_color, '475569', 'FFFFFF', '475569', '334155', STATUS_COLORS.get(r.get('status',''),'FFFFFF'), 'FFFFFF', '475569']
     bolds = [True, False, False, False, False, True, False, False]
 
     for c2, (val, color, bold) in enumerate(zip(vals, colors, bolds), 1):
@@ -374,14 +374,14 @@ def generate_weekly(records, from_date, to_date, all_records=None):
 
     ws0.merge_cells('B2:F2')
     c = ws0.cell(row=2, column=2, value='⚡ 售服案件週報')
-    c.font = Font(name='Arial', bold=True, color='FFFFFF', size=18)
-    c.fill = fill('1A1D27'); c.alignment = ca('left')
+    c.font = Font(name='Arial', bold=True, color='1F2937', size=18)
+    c.fill = fill('FFFFFF'); c.alignment = ca('left')
     ws0.row_dimensions[2].height = 36
 
     ws0.merge_cells('B3:F3')
     c = ws0.cell(row=3, column=2, value=f'報告期間：{label}')
-    c.font = Font(name='Arial', color='CBD5E1', size=12)
-    c.fill = fill('1A1D27'); c.alignment = ca('left')
+    c.font = Font(name='Arial', color='475569', size=12)
+    c.fill = fill('FFFFFF'); c.alignment = ca('left')
     ws0.row_dimensions[3].height = 22
     ws0.row_dimensions[4].height = 12
 
@@ -389,21 +389,21 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     for i, (lbl, val, color, sub) in enumerate(kpis):
         col = 2 + i
         c = ws0.cell(row=5, column=col, value=lbl)
-        c.font = Font(name='Arial', bold=True, color='CBD5E1', size=11); c.fill = fill('22263A'); c.alignment = ca()
+        c.font = Font(name='Arial', bold=True, color='475569', size=11); c.fill = fill('F1F5F9'); c.alignment = ca()
         ws0.row_dimensions[5].height = 16
         ws0.merge_cells(start_row=6, start_column=col, end_row=7, end_column=col)
         c = ws0.cell(row=6, column=col, value=val)
-        c.font = Font(name='Arial', bold=True, color=color, size=26); c.fill = fill('22263A'); c.alignment = ca()
+        c.font = Font(name='Arial', bold=True, color=color, size=26); c.fill = fill('F1F5F9'); c.alignment = ca()
         ws0.row_dimensions[6].height = 28; ws0.row_dimensions[7].height = 10
         c = ws0.cell(row=8, column=col, value=sub)
-        c.font = Font(name='Arial', color='CBD5E1', size=10); c.fill = fill('22263A'); c.alignment = ca()
+        c.font = Font(name='Arial', color='475569', size=10); c.fill = fill('F1F5F9'); c.alignment = ca()
         ws0.row_dimensions[8].height = 16
 
     ws0.row_dimensions[9].height = 12
     ws0.merge_cells('B10:F10')
     c = ws0.cell(row=10, column=2, value='👤 本週人員負責件數')
-    c.font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
-    c.fill = fill('2D3250'); c.alignment = ca('left')
+    c.font = Font(name='Arial', bold=True, color='1F2937', size=11)
+    c.fill = fill('D9E2F3'); c.alignment = ca('left')
     ws0.row_dimensions[10].height = 24
 
     handler_c = {}
@@ -412,10 +412,10 @@ def generate_weekly(records, from_date, to_date, all_records=None):
         handler_c[handler] = handler_c.get(handler, 0) + 1
     row = 11
     for h, cnt in sorted(handler_c.items(), key=lambda x: -x[1]):
-        bg = '1E2235' if row%2==0 else '161925'
+        bg = '334155' if row%2==0 else 'FFFFFF'
         for col, val in [(2, h),(3, f'{cnt} 件')]:
             c = ws0.cell(row=row, column=col, value=val)
-            c.font = weekly_font('F8FAFC', size=12)
+            c.font = weekly_font('334155', size=12)
             c.fill = fill(bg); c.alignment = ca('left') if col==2 else ca()
             c.border = border()
         ws0.row_dimensions[row].height = 22; row += 1
@@ -431,18 +431,18 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     for r in records: ch_c[r.get('channel') or '未知'] = ch_c.get(r.get('channel') or '未知', 0) + 1
     row = 3
     for ch, cnt in sorted(ch_c.items(), key=lambda x: -x[1]):
-        bg = '1E2235' if row%2==0 else '161925'
-        for c2, (val, color, bold) in enumerate([(ch,'E2E8F0',False),(cnt,'5B8CFF',True),(f'{cnt/total*100:.1f}%' if total else '0%','94A3B8',False)], 1):
+        bg = '334155' if row%2==0 else 'FFFFFF'
+        for c2, (val, color, bold) in enumerate([(ch,'475569',False),(cnt,'5B8CFF',True),(f'{cnt/total*100:.1f}%' if total else '0%','64748B',False)], 1):
             c = ws1.cell(row=row, column=c2, value=val)
-            body_color = 'F8FAFC' if c2 == 1 else color
+            body_color = '334155' if c2 == 1 else color
             c.font = weekly_font(body_color, bold=bold, size=12)
             c.fill = fill(bg); c.alignment = ca(); c.border = border()
         ws1.row_dimensions[row].height = 36
         row += 1
     for c2, val in enumerate(['合計',total,'100%'], 1):
         c = ws1.cell(row=row, column=c2, value=val)
-        c.font = weekly_font('FFFFFF', bold=True, size=12)
-        c.fill = fill('2D3250'); c.alignment = ca(); c.border = border()
+        c.font = weekly_font('1F2937', bold=True, size=12)
+        c.fill = fill('D9E2F3'); c.alignment = ca(); c.border = border()
     ws1.row_dimensions[row].height = 36
     pie = PieChart(); pie.title='進線管道佔比'
     style_weekly_chart(pie, width=20, height=13, show_percent=True)
@@ -471,10 +471,10 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     for cat, v in sorted_cats:
         top = '、'.join(f"{s}({n})" for s,n in sorted(v['subs'].items(), key=lambda x:-x[1])[:4])
         delta = format_weekly_category_delta(v['total'], previous_category_counts.get(cat, 0))
-        bg = '1E2235' if row%2==0 else '161925'
-        for c2,(val,color,bold) in enumerate([(cat,'E2E8F0',False),(v['total'],'5B8CFF',True),(top,'94A3B8',False),(delta,'FBBF24',False)], 1):
+        bg = '334155' if row%2==0 else 'FFFFFF'
+        for c2,(val,color,bold) in enumerate([(cat,'475569',False),(v['total'],'5B8CFF',True),(top,'64748B',False),(delta,'FBBF24',False)], 1):
             c = ws2.cell(row=row, column=c2, value=val)
-            body_color = color if c2 in (2, 4) else 'F8FAFC'
+            body_color = color if c2 in (2, 4) else '334155'
             c.font = weekly_font(body_color, bold=bold, size=12)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
         ws2.row_dimensions[row].height = 50; row += 1
@@ -501,10 +501,10 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     for st, rows in sorted(status_groups.items(), key=lambda x: -len(x[1])):
         handlers = '、'.join(set(r['handler'] for r in rows if r.get('handler')))
         notes = build_status_focus(rows)
-        bg = '1E2235' if row%2==0 else '161925'
+        bg = '334155' if row%2==0 else 'FFFFFF'
         for c2, val in enumerate([st, len(rows), handlers, notes], 1):
             c = ws3.cell(row=row, column=c2, value=val)
-            c.font = weekly_font(STATUS_COLORS.get(st,'FFFFFF') if c2==1 else 'F8FAFC', bold=(c2==1), size=12)
+            c.font = weekly_font(STATUS_COLORS.get(st,'FFFFFF') if c2==1 else '334155', bold=(c2==1), size=12)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
         ws3.row_dimensions[row].height = max(60, len(notes.split('\n'))*28); row += 1
 
@@ -530,7 +530,7 @@ def generate_weekly(records, from_date, to_date, all_records=None):
     ws5.sheet_view.showGridLines = False
     ws5.column_dimensions['A'].width = 24
     ws5.column_dimensions['B'].width = 72
-    weekly_title_row(ws5, 1, '📖 週報說明文件', 2, bg='2D3250')
+    weekly_title_row(ws5, 1, '📖 週報說明文件', 2, bg='D9E2F3')
 
     explanation_rows = [
         (3, '📌 案件編號格式', ''),
@@ -559,15 +559,15 @@ def generate_weekly(records, from_date, to_date, all_records=None):
         if right == '':
             ws5.merge_cells(start_row=row, start_column=1, end_row=row, end_column=2)
             c = ws5.cell(row=row, column=1, value=left)
-            c.font = weekly_font('FFFFFF', bold=True, size=12)
-            c.fill = fill('2D3250')
+            c.font = weekly_font('1F2937', bold=True, size=12)
+            c.fill = fill('D9E2F3')
             c.alignment = ca('left')
             ws5.row_dimensions[row].height = 24
         else:
             for col, val in [(1, left), (2, right)]:
                 c = ws5.cell(row=row, column=col, value=val)
-                c.font = weekly_font('F8FAFC' if col == 1 else 'E2E8F0', bold=(col == 1), size=12)
-                c.fill = fill('161925' if row % 2 else '1E2235')
+                c.font = weekly_font('334155' if col == 1 else '475569', bold=(col == 1), size=12)
+                c.fill = fill('FFFFFF' if row % 2 else '334155')
                 c.alignment = ca('left', wrap=True)
                 c.border = border()
             ws5.row_dimensions[row].height = 22
@@ -601,52 +601,52 @@ def generate_monthly(records, from_date, to_date):
         ws0.column_dimensions[col].width = w
     ws0.merge_cells('B2:F2')
     c = ws0.cell(row=2, column=2, value='⚡ 售服案件月報')
-    c.font = Font(name='Arial', bold=True, color='FFFFFF', size=18)
-    c.fill = fill('1A1D27'); c.alignment = ca('left'); ws0.row_dimensions[2].height = 36
+    c.font = Font(name='Arial', bold=True, color='1F2937', size=18)
+    c.fill = fill('FFFFFF'); c.alignment = ca('left'); ws0.row_dimensions[2].height = 36
     ws0.merge_cells('B3:F3')
     c = ws0.cell(row=3, column=2, value=f'報告期間：{label}　｜　產製日期：{to_date}')
-    c.font = Font(name='Arial', color='94A3B8', size=11)
-    c.fill = fill('1A1D27'); c.alignment = ca('left'); ws0.row_dimensions[3].height = 22
+    c.font = Font(name='Arial', color='64748B', size=11)
+    c.fill = fill('FFFFFF'); c.alignment = ca('left'); ws0.row_dimensions[3].height = 22
     ws0.row_dimensions[4].height = 12
 
     kpis = [('進線總件數',total,'5B8CFF','件'),('已結案',closed,'34D399',f'結案率 {close_rate}'),('未結案',open_cnt,'FBBF24','件'),('逾7天未結案',len(od),'F87171','件')]
     for i,(lbl,val,color,sub) in enumerate(kpis):
         col = 2+i
         c = ws0.cell(row=5, column=col, value=lbl)
-        c.font = Font(name='Arial', color='94A3B8', size=9); c.fill = fill('22263A'); c.alignment = ca()
+        c.font = Font(name='Arial', color='64748B', size=9); c.fill = fill('F1F5F9'); c.alignment = ca()
         ws0.row_dimensions[5].height = 14
         ws0.merge_cells(start_row=6, start_column=col, end_row=7, end_column=col)
         c = ws0.cell(row=6, column=col, value=val)
-        c.font = Font(name='Arial', bold=True, color=color, size=22); c.fill = fill('22263A'); c.alignment = ca()
+        c.font = Font(name='Arial', bold=True, color=color, size=22); c.fill = fill('F1F5F9'); c.alignment = ca()
         ws0.row_dimensions[6].height = 24; ws0.row_dimensions[7].height = 10
         c = ws0.cell(row=8, column=col, value=sub)
-        c.font = Font(name='Arial', color='64748B', size=9); c.fill = fill('22263A'); c.alignment = ca()
+        c.font = Font(name='Arial', color='64748B', size=9); c.fill = fill('F1F5F9'); c.alignment = ca()
         ws0.row_dimensions[8].height = 14
     ws0.row_dimensions[9].height = 12
     kpis2 = [('結案率',close_rate,'A78BFA'),('平均處理時間',avg_str,'38BDF8'),('最長逾期天數',f'{max((get_elapsed_days_as_of(r, report_end) for r in od if r.get("date")), default=0)}天','FB923C')]
     for i,(lbl,val,color) in enumerate(kpis2):
         col = 2+i
         c = ws0.cell(row=10, column=col, value=lbl)
-        c.font = Font(name='Arial', color='94A3B8', size=9); c.fill = fill('1A1D27'); c.alignment = ca()
+        c.font = Font(name='Arial', color='64748B', size=9); c.fill = fill('FFFFFF'); c.alignment = ca()
         ws0.row_dimensions[10].height = 14
         ws0.merge_cells(start_row=11, start_column=col, end_row=12, end_column=col)
         c = ws0.cell(row=11, column=col, value=val)
-        c.font = Font(name='Arial', bold=True, color=color, size=18); c.fill = fill('1A1D27'); c.alignment = ca()
+        c.font = Font(name='Arial', bold=True, color=color, size=18); c.fill = fill('FFFFFF'); c.alignment = ca()
         ws0.row_dimensions[11].height = 24; ws0.row_dimensions[12].height = 14
     ws0.row_dimensions[13].height = 16
     ws0.merge_cells('B14:F14')
     c = ws0.cell(row=14, column=2, value='👤 本月人員負責件數')
-    c.font = Font(name='Arial', bold=True, color='FFFFFF', size=10)
-    c.fill = fill('2D3250'); c.alignment = ca('left'); ws0.row_dimensions[14].height = 18
+    c.font = Font(name='Arial', bold=True, color='1F2937', size=10)
+    c.fill = fill('D9E2F3'); c.alignment = ca('left'); ws0.row_dimensions[14].height = 18
     handler_c = {}
     for r in records:
         if r.get('handler'): handler_c[r['handler']] = handler_c.get(r['handler'], 0)+1
     row = 15
     for h, cnt in sorted(handler_c.items(), key=lambda x:-x[1]):
-        bg = '1E2235' if row%2==0 else '161925'
+        bg = '334155' if row%2==0 else 'FFFFFF'
         for col, val in [(2,h),(3,f'{cnt} 件')]:
             c = ws0.cell(row=row, column=col, value=val)
-            c.font = Font(name='Arial', size=10, color='E2E8F0')
+            c.font = Font(name='Arial', size=10, color='475569')
             c.fill = fill(bg); c.alignment = ca('left') if col==2 else ca(); c.border = border()
         ws0.row_dimensions[row].height = 16; row += 1
 
@@ -660,16 +660,16 @@ def generate_monthly(records, from_date, to_date):
     for r in records: ch_c[r.get('channel') or '未知'] = ch_c.get(r.get('channel') or '未知',0)+1
     row = 3
     for ch, cnt in sorted(ch_c.items(), key=lambda x:-x[1]):
-        bg = '1E2235' if row%2==0 else '161925'
-        for c2,(val,color,bold) in enumerate([(ch,'E2E8F0',False),(cnt,'5B8CFF',True),(f'{cnt/total*100:.1f}%' if total else '0%','94A3B8',False)],1):
+        bg = '334155' if row%2==0 else 'FFFFFF'
+        for c2,(val,color,bold) in enumerate([(ch,'475569',False),(cnt,'5B8CFF',True),(f'{cnt/total*100:.1f}%' if total else '0%','64748B',False)],1):
             c = ws1.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=bold, color=color, size=10)
             c.fill = fill(bg); c.alignment = ca(); c.border = border()
         row += 1
     for c2, val in enumerate(['合計',total,'100%'],1):
         c = ws1.cell(row=row, column=c2, value=val)
-        c.font = Font(name='Arial', bold=True, color='FFFFFF', size=10)
-        c.fill = fill('2D3250'); c.alignment = ca(); c.border = border()
+        c.font = Font(name='Arial', bold=True, color='1F2937', size=10)
+        c.fill = fill('D9E2F3'); c.alignment = ca(); c.border = border()
     pie = PieChart(); pie.title='進線管道佔比'; pie.style=10; pie.width=14; pie.height=10
     lb = Reference(ws1, min_col=1, min_row=3, max_row=2+len(ch_c))
     dt = Reference(ws1, min_col=2, min_row=2, max_row=2+len(ch_c))
@@ -687,11 +687,11 @@ def generate_monthly(records, from_date, to_date):
     prod_list = [(k,v) for k,v in prod_map.items() if v>0]
     prod_list.sort(key=lambda x:-x[1])
     total_prod = sum(v for _,v in prod_list)
-    PROD_COLORS = ['5B8CFF','34D399','FBBF24','A78BFA','94A3B8']
+    PROD_COLORS = ['5B8CFF','34D399','FBBF24','A78BFA','64748B']
     row = 3
     for i,(prod,cnt) in enumerate(prod_list):
-        bg = '1E2235' if row%2==0 else '161925'
-        for c2,(val,color,bold) in enumerate([(prod,PROD_COLORS[i%5],True),(cnt,'FFFFFF',True),(f'{cnt/total_prod*100:.1f}%' if total_prod else '0%','94A3B8',False)],1):
+        bg = '334155' if row%2==0 else 'FFFFFF'
+        for c2,(val,color,bold) in enumerate([(prod,PROD_COLORS[i%5],True),(cnt,'FFFFFF',True),(f'{cnt/total_prod*100:.1f}%' if total_prod else '0%','64748B',False)],1):
             c = ws2.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=bold, color=color, size=10)
             c.fill = fill(bg); c.alignment = ca(); c.border = border()
@@ -699,7 +699,7 @@ def generate_monthly(records, from_date, to_date):
     for c2,(val,color) in enumerate([('合計','FFFFFF'),(total_prod,'FFFFFF'),('100%','FFFFFF')],1):
         c = ws2.cell(row=row, column=c2, value=val)
         c.font = Font(name='Arial', bold=True, color=color, size=10)
-        c.fill = fill('2D3250'); c.alignment = ca(); c.border = border()
+        c.fill = fill('D9E2F3'); c.alignment = ca(); c.border = border()
     chart_row = row+2
     ws2.cell(row=chart_row, column=1, value='產品類別'); ws2.cell(row=chart_row, column=2, value='件數')
     for i2,(prod,cnt) in enumerate(prod_list,1):
@@ -727,12 +727,12 @@ def generate_monthly(records, from_date, to_date):
             cat = r.get('category','其他')
             company_issues[co][cat] = company_issues[co].get(cat,0)+1
     top5 = sorted(company_c.items(), key=lambda x:-x[1])[:5]
-    rank_colors = ['FFD700','C0C0C0','CD7F32','E2E8F0','E2E8F0']
+    rank_colors = ['FFD700','C0C0C0','CD7F32','475569','475569']
     row = 3
     for rank,(co,cnt) in enumerate(top5,1):
         issues = '、'.join(f"{k}({v})" for k,v in sorted(company_issues.get(co,{}).items(), key=lambda x:-x[1])[:2])
-        bg = '1E2235' if row%2==0 else '161925'
-        for c2,(val,color,bold) in enumerate([(rank,rank_colors[rank-1],rank<=3),(co,'FFFFFF',False),(cnt,'5B8CFF',True),(issues,'94A3B8',False)],1):
+        bg = '334155' if row%2==0 else 'FFFFFF'
+        for c2,(val,color,bold) in enumerate([(rank,rank_colors[rank-1],rank<=3),(co,'FFFFFF',False),(cnt,'5B8CFF',True),(issues,'64748B',False)],1):
             c = ws3.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=bold, color=color, size=10)
             c.fill = fill(bg); c.alignment = ca() if c2!=4 else ca('left',wrap=True); c.border = border()
@@ -749,8 +749,8 @@ def generate_monthly(records, from_date, to_date):
     max_days = max([get_elapsed_days_as_of(r, report_end) for r in od if r.get('date')], default=0)
     ws4.merge_cells('A1:G1')
     sc = ws4.cell(row=1, column=1, value=f'⚠️  截至月底共 {len(od)} 筆超過7天未結案　｜　最長已逾 {max_days} 天　｜　{label}')
-    sc.font = Font(name='Arial', bold=True, color='FFFFFF', size=11)
-    sc.fill = fill('7F1D1D'); sc.alignment = ca('left'); ws4.row_dimensions[1].height = 22
+    sc.font = Font(name='Arial', bold=True, color='1F2937', size=11)
+    sc.fill = fill('FEE2E2'); sc.alignment = ca('left'); ws4.row_dimensions[1].height = 22
     set_hdr(ws4, 2, ['進線日期時間','車牌','公司名稱','問題次分類','處理狀態','負責人員','已逾天數'])
     for col, w in [('A',16),('B',16),('C',14),('D',26),('E',14),('F',12),('G',14)]:
         ws4.column_dimensions[col].width = w
@@ -758,9 +758,9 @@ def generate_monthly(records, from_date, to_date):
     for r in sorted(od, key=lambda x: x.get('date','')):
         days = get_elapsed_days_as_of(r, report_end)
         day_color = 'F87171' if days>14 else 'FB923C'
-        bg = '2A1515' if row%2==0 else '221212'
+        bg = 'FFF7F7' if row%2==0 else 'FFFAFA'
         vals = [fmt_dt(r.get('date')),r.get('plate',''),r.get('company',''),get_subcategory_label(r),r.get('status',''),r.get('handler','—'),f'{days}天']
-        colors = ['94A3B8','94A3B8','FFFFFF','94A3B8',STATUS_COLORS.get(r.get('status',''),'E2E8F0'),'E2E8F0',day_color]
+        colors = ['64748B','64748B','FFFFFF','64748B',STATUS_COLORS.get(r.get('status',''),'475569'),'475569',day_color]
         for c2,(val,color) in enumerate(zip(vals,colors),1):
             c = ws4.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=(c2==7), color=color, size=10)
@@ -788,8 +788,8 @@ def generate_monthly(records, from_date, to_date):
     row = 3
     for cat, v in sorted_cats:
         top = '、'.join(f"{s}({n})" for s,n in sorted(v['subs'].items(), key=lambda x:-x[1])[:4])
-        bg = '1E2235' if row%2==0 else '161925'
-        for c2,(val,color,bold) in enumerate([(cat,'E2E8F0',False),(v['total'],'5B8CFF',True),(top,'94A3B8',False)],1):
+        bg = '334155' if row%2==0 else 'FFFFFF'
+        for c2,(val,color,bold) in enumerate([(cat,'475569',False),(v['total'],'5B8CFF',True),(top,'64748B',False)],1):
             c = ws5.cell(row=row, column=c2, value=val)
             c.font = Font(name='Arial', bold=bold, color=color, size=10)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
@@ -815,10 +815,10 @@ def generate_monthly(records, from_date, to_date):
     for st, rows in sorted(status_groups.items(), key=lambda x:-len(x[1])):
         handlers = '、'.join(set(r['handler'] for r in rows if r.get('handler')))
         notes = build_status_focus(rows)
-        bg = '1E2235' if row%2==0 else '161925'
+        bg = '334155' if row%2==0 else 'FFFFFF'
         for c2, val in enumerate([st,len(rows),handlers,notes],1):
             c = ws6.cell(row=row, column=c2, value=val)
-            c.font = Font(name='Arial', bold=(c2==1), color=STATUS_COLORS.get(st,'E2E8F0') if c2==1 else 'E2E8F0', size=10)
+            c.font = Font(name='Arial', bold=(c2==1), color=STATUS_COLORS.get(st,'475569') if c2==1 else '475569', size=10)
             c.fill = fill(bg); c.alignment = ca() if c2<=2 else ca('left',wrap=True); c.border = border()
         ws6.row_dimensions[row].height = max(45, len(notes.split('\n'))*22); row += 1
     chart_row = row+1
