@@ -88,6 +88,12 @@ def get_subcategory_label(r):
         return f'{subcategory}（{note}）'
     return subcategory
 
+def get_report_category(r):
+    return r.get('new_category') or r.get('category') or '其他'
+
+def get_report_subcategory_label(r):
+    return r.get('new_subcategory') or get_subcategory_label(r)
+
 def build_status_focus(rows):
     grouped = {}
     for r in rows:
@@ -165,7 +171,7 @@ def build_previous_period_records(all_records, from_date, to_date):
 def build_category_counts(records):
     counts = {}
     for r in records:
-        category = r.get('category') or '其他'
+        category = get_report_category(r)
         counts[category] = counts.get(category, 0) + 1
     return counts
 
@@ -573,10 +579,10 @@ def generate_weekly(records, from_date, to_date, all_records=None):
 
     cat_map = {}
     for r in records:
-        k = r.get('category') or '其他'
+        k = get_report_category(r)
         if k not in cat_map: cat_map[k] = {'total':0,'subs':{}}
         cat_map[k]['total'] += 1
-        s = get_subcategory_label(r)
+        s = get_report_subcategory_label(r)
         cat_map[k]['subs'][s] = cat_map[k]['subs'].get(s,0)+1
     sorted_cats = sorted(cat_map.items(), key=lambda x: -x[1]['total'])
     row = 3
