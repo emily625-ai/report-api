@@ -341,6 +341,63 @@ def _write_open_row(ws, row, r, is_child=False):
         c.border = border()
     ws.row_dimensions[row].height = 24
 
+# ===== MONTHLY WEEKLY SUMMARY =====
+def build_monthly_weekly_summary(all_records, from_date, to_date):
+    report_start = parse_report_date(from_date)
+    report_end = parse_report_date(to_date)
+    if not report_start:
+        return []
+    month_start = report_start.replace(day=1)
+    next_month = (month_start + timedelta(days=32)).replace(day=1)
+    month_end = next_month - timedelta(days=1)
+    cutoff = min(report_end or month_end, month_end)
+    rows = []
+    cursor = month_start
+    while cursor <= cutoff:
+        week_end = min(cursor + timedelta(days=6 - cursor.weekday()), month_end, cutoff)
+        created = [r for r in all_records if cursor <= get_record_date(r.get('date')) <= week_end if get_record_date(r.get('date'))]
+        closed = [r for r in all_records if cursor <= get_record_date(r.get('closeDate')) <= week_end if get_record_date(r.get('closeDate'))]
+        rows.append({
+            'label': f'第{len(rows) + 1}週',
+            'range': f'{cursor.month}/{cursor.day}–{week_end.month}/{week_end.day}',
+            'created': len(created),
+            'closed': len(closed),
+            'open': sum(1 for r in created if r.get('status') != '結案')
+        })
+        cursor = week_end + timedelta(days=1)
+    return rows
+
+def write_monthly_weekly_summary(ws, rows, from_date, to_date):
+    ws.sheet_view.showGridLines = False
+    ws.freeze_panes = 'A3'
+    weekly_title_row(ws, 1, f'📅 當月份每週案件統計　｜　{from_date[:7]}　｜　截至 {to_date}', 5)
+    weekly_hdr(ws, 2, ['週別', '日期範圍', '新增', '結案', '未結案'])
+    for col, width in [('A',12),('B',20),('C',14),('D',14),('E',14)]:
+        ws.column_dimensions[col].width = width
+    for row, item in enumerate(rows, 3):
+        values = [item['label'], item['range'], item['created'], item['closed'], item['open']]
+        bg = 'F8FAFC' if row % 2 == 0 else 'FFFFFF'
+        for column, value in enumerate(values, 1):
+            cell = ws.cell(row=row, column=column, value=value)
+            color = '5B8CFF' if column == 3 else ('34D399' if column == 4 else ('FBBF24' if column == 5 else '334155'))
+            cell.font = weekly_font(color, bold=(column in (1, 3, 4, 5)), size=12)
+            cell.fill = fill(bg)
+            cell.alignment = ca('center' if column >= 3 else 'left')
+            cell.border = border()
+        ws.row_dimensions[row].height = 28
+    if not rows:
+        ws.merge_cells(start_row=3, start_column=1, end_row=3, end_column=5)
+        cell = ws.cell(row=3, column=1, value='目前沒有可統計的週資料')
+        cell.font = weekly_font('64748B', bold=True, size=12)
+        cell.fill = fill('FFFFFF')
+        cell.alignment = ca('center')
+        cell.border = border()
+    note_row = len(rows) + 4
+    ws.merge_cells(start_row=note_row, start_column=1, end_row=note_row, end_column=5)
+    note = ws.cell(row=note_row, column=1, value='未結案＝該週新增案件中，目前狀態尚未結案；結案數依結案日期計算。')
+    note.font = weekly_font('64748B', size=10)
+    note.alignment = ca('left')
+
 # ===== WEEKLY DETAIL =====
 def write_weekly_detail(ws, records, from_date, to_date):
     ws.sheet_view.showGridLines = False
@@ -621,8 +678,12 @@ def generate_weekly(records, from_date, to_date, all_records=None):
             ws5.row_dimensions[row].height = 22
 
 
-    # ===== ⑤ 本週案件明細 =====
-    ws_detail = wb.create_sheet('⑤ 本週案件明細')
+    # ===== ⑤ 當月份每週案件統計 =====
+    ws_summary = wb.create_sheet('⑤ 當月份每週統計')
+    write_monthly_weekly_summary(ws_summary, build_monthly_weekly_summary(all_records, from_date, to_date), from_date, to_date)
+
+    # ===== ⑥ 本週案件明細 =====
+    ws_detail = wb.create_sheet('⑥ 本週案件明細')
     write_weekly_detail(ws_detail, records, from_date, to_date)
 
     return wb
