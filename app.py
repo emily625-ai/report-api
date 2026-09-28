@@ -355,8 +355,15 @@ def build_monthly_weekly_summary(all_records, from_date, to_date):
     cursor = month_start
     while cursor <= cutoff:
         week_end = min(cursor + timedelta(days=6 - cursor.weekday()), month_end, cutoff)
-        created = [r for r in all_records if cursor <= get_record_date(r.get('date')) <= week_end if get_record_date(r.get('date'))]
-        closed = [r for r in all_records if cursor <= get_record_date(r.get('closeDate')) <= week_end if get_record_date(r.get('closeDate'))]
+        created = []
+        closed = []
+        for record in all_records:
+            created_date = get_record_date(record.get('date'))
+            if created_date and cursor <= created_date <= week_end:
+                created.append(record)
+            closed_date = get_record_date(record.get('closeDate'))
+            if closed_date and cursor <= closed_date <= week_end:
+                closed.append(record)
         rows.append({
             'label': f'第{len(rows) + 1}週',
             'range': f'{cursor.month}/{cursor.day}–{week_end.month}/{week_end.day}',
