@@ -1079,11 +1079,14 @@ def supabase_rest_url(table, query=''):
     suffix = f'?{query}' if query else ''
     return f'{base_url}/rest/v1/{table}{suffix}'
 
-def supabase_request(method, table, *, schema=None, query='', payload=None):
+def supabase_request(method, table, *, schema=None, query='', payload=None, prefer=None):
+    headers = get_supabase_headers(schema)
+    if prefer:
+        headers['Prefer'] = prefer
     response = requests.request(
         method,
         supabase_rest_url(table, query),
-        headers=get_supabase_headers(schema),
+        headers=headers,
         data=json.dumps(payload) if payload is not None else None,
         timeout=15
     )
@@ -1105,8 +1108,9 @@ def insert_line_message(row):
         'POST',
         LINE_MESSAGES_TABLE,
         schema=LINE_MESSAGES_SCHEMA,
-        query='select=id',
-        payload=row
+        query='select=id,conversation_id',
+        payload=row,
+        prefer='return=representation'
     )
 
 def log_line_activity(action, detail):
@@ -1126,7 +1130,15 @@ def build_line_message_row(event):
     source = event.get('source') or {}
     message = event.get('message') or {}
     message_type = message.get('type')
-    sender_id = source.get('userId') or source.get('groupId') or source.get('roomId')
+    # Persist the chat identity: group members share one conversation; private chats use userId.
+    if source.get('type') == 'group':
+        sender_id = source.get('groupId')
+    elif source.get('type') == 'room':
+        sender_id = source.get('roomId')
+    else:
+        sender_id = source.get('userId')
+    # Retain the prior hash identity so a redelivery across rollout does not re-import history.
+    duplicate_identity = source.get('userId') or source.get('groupId') or source.get('roomId')
     sender_name = resolve_line_sender_name(source)
     received_at = line_timestamp_to_iso(event.get('timestamp'))
 
@@ -1143,7 +1155,7 @@ def build_line_message_row(event):
 
     normalized_message = normalize_line_message(raw_message)
     duplicate_hash = build_line_duplicate_hash(
-        sender_id,
+        duplicate_identity,
         sender_name,
         received_at,
         normalized_message,
@@ -1187,7 +1199,14 @@ def process_line_webhook_events(events):
                 summary['duplicates'] += 1
                 log_line_activity('line_webhook_duplicate_skipped', f'duplicate_hash={duplicate_hash}')
                 continue
-            insert_line_message(row)
+            inserted_rows = insert_line_message(row)
+            if not isinstance(inserted_rows, list):
+                raise RuntimeError('LINE insert returned an invalid response; verify PostgREST representation')
+            if not inserted_rows:
+                # The database trigger may suppress a duplicate that arrived after the precheck.
+                summary['duplicates'] += 1
+                log_line_activity('line_webhook_duplicate_skipped', f'duplicate_hash={duplicate_hash}')
+                continue
             summary['inserted'] += 1
             log_line_activity('line_webhook_message_imported', f'status={row["status"]}; source={LINE_WEBHOOK_SOURCE}')
         except Exception as exc:
@@ -1217,10 +1236,20 @@ def line_webhook():
     except Exception:
         return jsonify({'error': 'invalid JSON payload'}), 400
 
+    if not isinstance(payload, dict):
+        return jsonify({'error': 'invalid LINE payload'}), 400
     events = payload.get('events', [])
-    if not isinstance(events, list):
+    if not isinstance(events, list) or any(not isinstance(event, dict) for event in events):
         return jsonify({'error': 'invalid LINE events payload'}), 400
 
+    for event in events:
+        if event.get('type') != 'message':
+            continue
+        event_source, message = event.get('source') or {}, event.get('message') or {}
+        if not isinstance(event_source, dict) or not isinstance(message, dict):
+            return jsonify({'error': 'invalid LINE message payload'}), 400
+        if message.get('type') == 'text' and not isinstance(message.get('text', ''), str):
+            return jsonify({'error': 'invalid LINE text payload'}), 400
     try:
         summary = process_line_webhook_events(events)
         return jsonify({'status': 'ok', **summary})
@@ -1322,3 +1351,4 @@ def monthly_report():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
