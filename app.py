@@ -13,7 +13,7 @@ import io
 import json
 import os
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 app = Flask(__name__)
 CORS(app)
@@ -1032,10 +1032,19 @@ def resolve_line_sender_name(source):
     room_id = source.get('roomId')
 
     if source_type == 'group' and group_id:
-        summary = line_api_get(f'/group/{group_id}/summary')
-        if summary and summary.get('groupName'):
-            return summary['groupName']
+        # 群組內發言：優先取「發言者在群組中的名稱」
+        if user_id:
+            member = line_api_get(f'/group/{group_id}/member/{user_id}')
+            if member and member.get('displayName'):
+                return member['displayName']
         return 'LINE 群組'
+
+    if source_type == 'room' and room_id:
+        if user_id:
+            member = line_api_get(f'/room/{room_id}/member/{user_id}')
+            if member and member.get('displayName'):
+                return member['displayName']
+        return 'LINE 多人聊天室'
 
     if source_type == 'user' and user_id:
         profile = line_api_get(f'/profile/{user_id}')
@@ -1043,10 +1052,21 @@ def resolve_line_sender_name(source):
             return profile['displayName']
         return 'LINE 用戶'
 
-    if source_type == 'room' and room_id:
-        return 'LINE 多人聊天室'
-
     return source_type or 'line'
+
+_line_group_name_cache = {}
+
+def resolve_line_group_name(source):
+    group_id = source.get('groupId')
+    if not group_id:
+        return None
+    if group_id in _line_group_name_cache:
+        return _line_group_name_cache[group_id]
+    summary = line_api_get(f'/group/{group_id}/summary')
+    name = summary.get('groupName') if summary else None
+    if name:
+        _line_group_name_cache[group_id] = name
+    return name
 
 def build_line_duplicate_hash(sender_id, sender_name, received_at, normalized_message, message_id=''):
     key_parts = [
@@ -1159,7 +1179,10 @@ def build_line_message_row(event):
         'received_at': received_at,
         'status': status,
         'operator_id': 'line_webhook',
-        'duplicate_hash': duplicate_hash
+        'duplicate_hash': duplicate_hash,
+        'source_type': source.get('type'),
+        'group_id': source.get('groupId') or source.get('roomId'),
+        'group_name': resolve_line_group_name(source)
     }
 
 def summarize_line_event_for_log(event):
@@ -1172,6 +1195,27 @@ def summarize_line_event_for_log(event):
         f'webhook_event_id={event.get("webhookEventId") or "-"}'
     ]
     return '; '.join(parts)
+
+GENERIC_LINE_SENDER_NAMES = ('LINE 用戶', 'LINE 群組', 'LINE 多人聊天室', 'user', 'group', 'room')
+_line_backfilled_senders = set()
+
+def backfill_line_sender_name(row):
+    """同一位發言者第一次查到真名時，把他過去名稱是「LINE 用戶／LINE 群組」的舊訊息一起補上。
+    舊訊息沒有群組 ID，無法回頭查群組成員資料，所以利用新訊息查到的名字回補。失敗不影響匯入。"""
+    sender_id = row.get('sender_id')
+    sender_name = (row.get('sender_name') or '').strip()
+    if not sender_id or not sender_name or sender_name in GENERIC_LINE_SENDER_NAMES:
+        return
+    if sender_id in _line_backfilled_senders:
+        return
+    try:
+        names = ','.join(f'"{name}"' for name in GENERIC_LINE_SENDER_NAMES)
+        query = f'sender_id=eq.{quote(sender_id, safe="")}&sender_name=in.({quote(names, safe=",")})'
+        supabase_request('PATCH', LINE_MESSAGES_TABLE, schema=LINE_MESSAGES_SCHEMA, query=query,
+                         payload={'sender_name': sender_name})
+        _line_backfilled_senders.add(sender_id)
+    except Exception as exc:
+        app.logger.warning('LINE sender name backfill failed: %s', exc)
 
 def process_line_webhook_events(events):
     summary = {'received': len(events), 'inserted': 0, 'duplicates': 0, 'skipped': 0, 'errors': 0}
@@ -1189,6 +1233,7 @@ def process_line_webhook_events(events):
                 continue
             insert_line_message(row)
             summary['inserted'] += 1
+            backfill_line_sender_name(row)
             log_line_activity('line_webhook_message_imported', f'status={row["status"]}; source={LINE_WEBHOOK_SOURCE}')
         except Exception as exc:
             summary['errors'] += 1
