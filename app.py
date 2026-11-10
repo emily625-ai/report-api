@@ -13,7 +13,7 @@ import io
 import json
 import os
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 app = Flask(__name__)
 CORS(app)
@@ -1196,6 +1196,27 @@ def summarize_line_event_for_log(event):
     ]
     return '; '.join(parts)
 
+GENERIC_LINE_SENDER_NAMES = ('LINE 用戶', 'LINE 群組', 'LINE 多人聊天室', 'user', 'group', 'room')
+_line_backfilled_senders = set()
+
+def backfill_line_sender_name(row):
+    """同一位發言者第一次查到真名時，把他過去名稱是「LINE 用戶／LINE 群組」的舊訊息一起補上。
+    舊訊息沒有群組 ID，無法回頭查群組成員資料，所以利用新訊息查到的名字回補。失敗不影響匯入。"""
+    sender_id = row.get('sender_id')
+    sender_name = (row.get('sender_name') or '').strip()
+    if not sender_id or not sender_name or sender_name in GENERIC_LINE_SENDER_NAMES:
+        return
+    if sender_id in _line_backfilled_senders:
+        return
+    try:
+        names = ','.join(f'"{name}"' for name in GENERIC_LINE_SENDER_NAMES)
+        query = f'sender_id=eq.{quote(sender_id, safe="")}&sender_name=in.({quote(names, safe=",")})'
+        supabase_request('PATCH', LINE_MESSAGES_TABLE, schema=LINE_MESSAGES_SCHEMA, query=query,
+                         payload={'sender_name': sender_name})
+        _line_backfilled_senders.add(sender_id)
+    except Exception as exc:
+        app.logger.warning('LINE sender name backfill failed: %s', exc)
+
 def process_line_webhook_events(events):
     summary = {'received': len(events), 'inserted': 0, 'duplicates': 0, 'skipped': 0, 'errors': 0}
     for event in events:
@@ -1212,6 +1233,7 @@ def process_line_webhook_events(events):
                 continue
             insert_line_message(row)
             summary['inserted'] += 1
+            backfill_line_sender_name(row)
             log_line_activity('line_webhook_message_imported', f'status={row["status"]}; source={LINE_WEBHOOK_SOURCE}')
         except Exception as exc:
             summary['errors'] += 1
